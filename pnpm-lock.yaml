@@ -60,7 +60,7 @@ importers:
         specifier: catalog:dev
         version: 0.1.22(@arethetypeswrong/core@0.18.2)(@types/node@25.9.1)(publint@0.3.21)(typescript@6.0.3)(unplugin-unused@0.5.7)(vite@7.1.12(@types/node@25.9.1)(lightningcss@1.32.0))
 
-  packages/example:
+  packages/react-router-routing-toolkit:
     devDependencies:
       '@arethetypeswrong/core':
         specifier: catalog:dev

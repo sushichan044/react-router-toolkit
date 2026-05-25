@@ -1,5 +1,5 @@
 {
-  "name": "template-ts-lib-polyrepo",
+  "name": "react-router-routing-toolkit",
   "version": "0.0.0",
   "private": true,
   "description": "",
@@ -16,7 +16,7 @@
   "repository": {
     "type": "git",
     "url": "git+https://github.com/sushichan044/react-router-routing-toolkit.git",
-    "directory": "packages/example"
+    "directory": "packages/react-router-routing-toolkit"
   },
   "funding": "https://github.com/sponsors/sushichan044",
   "files": [
