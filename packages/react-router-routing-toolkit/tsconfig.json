@@ -3,7 +3,7 @@
   "compilerOptions": {
     "module": "preserve",
     "moduleResolution": "bundler",
-    "types": ["node", "vite-plus/test/globals"],
+    "types": ["node"],
     "erasableSyntaxOnly": true
   }
 }

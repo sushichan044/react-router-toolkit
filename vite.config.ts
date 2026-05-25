@@ -32,6 +32,5 @@ export default defineConfig({
     typecheck: {
       enabled: true,
     },
-    globals: true,
   },
 });
