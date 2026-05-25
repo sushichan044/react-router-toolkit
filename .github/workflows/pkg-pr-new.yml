@@ -1,0 +1,45 @@
+name: Publish preview package
+
+on:
+  pull_request:
+    branches:
+      - "**"
+    types:
+      - opened
+      - synchronize
+      - reopened
+      - labeled # need to run if `cr-tracked` label is added
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+defaults:
+  run:
+    shell: bash
+
+permissions:
+  contents: read
+
+jobs:
+  publish:
+    if: github.repository == 'sushichan044/react-router-routing-toolkit' && (github.ref == 'refs/heads/main' || contains(github.event.pull_request.labels.*.name, 'cr-tracked'))
+    name: Publish to pkg-pr-new (Publish Preview Package)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    permissions:
+      contents: read
+      pull-requests: write
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          persist-credentials: false
+
+      - uses: ./.github/actions/setup-env
+
+      - name: Build
+        run: pnpm run build
+
+      - name: Publish
+        run: pnpm run pkg-pr-new './packages/*'

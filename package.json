@@ -1,0 +1,25 @@
+{
+  "name": "react-router-routing-toolkit",
+  "version": "0.0.0",
+  "private": true,
+  "description": "",
+  "keywords": [],
+  "author": "",
+  "type": "module",
+  "scripts": {
+    "pkg-pr-new": "pkg-pr-new publish --compact --comment=update --pnpm",
+    "build": "pnpm -r run build",
+    "release": "pnpm run build && changeset publish",
+    "changeset": "changeset"
+  },
+  "devDependencies": {
+    "@changesets/changelog-github": "0.7.0",
+    "@changesets/cli": "2.31.0",
+    "@typescript/native-preview": "catalog:dev",
+    "@virtual-live-lab/tsconfig": "catalog:dev",
+    "pkg-pr-new": "catalog:dev",
+    "typescript": "catalog:dev",
+    "vite-plus": "catalog:dev"
+  },
+  "packageManager": "pnpm@11.2.2"
+}

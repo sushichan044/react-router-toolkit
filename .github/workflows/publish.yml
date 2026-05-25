@@ -1,0 +1,47 @@
+name: Publish to npm
+
+on:
+  push:
+    branches:
+      - main
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+defaults:
+  run:
+    shell: bash
+
+permissions:
+  contents: read
+
+jobs:
+  release:
+    name: Release
+    if: github.repository == 'sushichan044/react-router-routing-toolkit'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    permissions:
+      id-token: write
+      contents: write
+      packages: write
+      pull-requests: write
+      issues: read
+    steps:
+      - name: Checkout Repo
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+
+      - uses: ./.github/actions/setup-env
+
+      - name: Setup latest npm to use trusted publish
+        run: |
+          npm install -g npm@latest
+
+      - name: Create Release Pull Request or Publish to npm
+        id: changesets
+        uses: changesets/action@63a615b9cd06ba9a3e6d13796c7fbcb080a60a0b # v1.8.0
+        with:
+          publish: pnpm release
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

@@ -1,0 +1,56 @@
+{
+  "name": "template-ts-lib-polyrepo",
+  "version": "0.0.0",
+  "private": true,
+  "description": "",
+  "keywords": [],
+  "homepage": "https://github.com/sushichan044/react-router-routing-toolkit#readme",
+  "bugs": {
+    "url": "https://github.com/sushichan044/react-router-routing-toolkit/issues"
+  },
+  "license": "",
+  "author": {
+    "name": "sushichan044",
+    "url": "https://github.com/sushichan044"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/sushichan044/react-router-routing-toolkit.git",
+    "directory": "packages/example"
+  },
+  "funding": "https://github.com/sponsors/sushichan044",
+  "files": [
+    "dist"
+  ],
+  "type": "module",
+  "sideEffects": false,
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.mts",
+      "import": "./dist/index.mjs"
+    },
+    "./package.json": "./package.json"
+  },
+  "publishConfig": {
+    "access": "public",
+    "provenance": true,
+    "registry": "https://registry.npmjs.org/"
+  },
+  "scripts": {
+    "prepublishOnly": "vp pack",
+    "build": "vp pack"
+  },
+  "devDependencies": {
+    "@arethetypeswrong/core": "catalog:dev",
+    "@types/node": "catalog:dev",
+    "@typescript/native-preview": "catalog:dev",
+    "@virtual-live-lab/tsconfig": "catalog:dev",
+    "publint": "catalog:dev",
+    "typescript": "catalog:dev",
+    "unplugin-unused": "catalog:dev",
+    "vite-plus": "catalog:dev"
+  },
+  "engines": {
+    "node": ">=22.12.0"
+  }
+}
