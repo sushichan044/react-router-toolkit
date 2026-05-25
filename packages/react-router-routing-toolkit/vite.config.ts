@@ -18,6 +18,10 @@ export default defineConfig({
       sourcemap: false,
       treeshake: true,
       unused: true,
+      define: {
+        "import.meta.vitest": "undefined", // Avoid bundling Vitest's `import.meta.vitest` in the output, which would cause runtime errors in user projects that don't use Vitest.
+        "import.meta.e2e": "undefined", // Similarly avoid bundling `import.meta.e2e`.
+      },
     },
   ],
 });

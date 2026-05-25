@@ -42,13 +42,20 @@
   },
   "devDependencies": {
     "@arethetypeswrong/core": "catalog:dev",
+    "@react-router/dev": "catalog:dev",
     "@types/node": "catalog:dev",
     "@typescript/native-preview": "catalog:dev",
     "@virtual-live-lab/tsconfig": "catalog:dev",
     "publint": "catalog:dev",
+    "react-router": "catalog:dev",
     "typescript": "catalog:dev",
     "unplugin-unused": "catalog:dev",
+    "vite": "catalog:dev",
     "vite-plus": "catalog:dev"
+  },
+  "peerDependencies": {
+    "react-router": ">=7.0.0",
+    "vite": "^7.0.0 || ^8.0.0"
   },
   "engines": {
     "node": ">=22.12.0"

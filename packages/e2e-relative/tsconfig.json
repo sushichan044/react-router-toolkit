@@ -1,0 +1,20 @@
+{
+  "extends": "@virtual-live-lab/tsconfig/base",
+  "compilerOptions": {
+    "module": "preserve",
+    "moduleResolution": "bundler",
+    "types": ["node"],
+    "lib": ["ESNext", "DOM"],
+    "jsx": "react-jsx",
+    "erasableSyntaxOnly": true
+  },
+  "include": [
+    "**/*.ts",
+    "**/*.tsx",
+    "**/.server/**/*.ts",
+    "**/.server/**/*.tsx",
+    "**/.client/**/*.ts",
+    "**/.client/**/*.tsx",
+    ".react-router/types/**/*"
+  ]
+}

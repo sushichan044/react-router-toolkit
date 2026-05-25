@@ -1,0 +1,7 @@
+{
+  "compilerOptions": {
+    "paths": {
+      "~routes/*": ["./app/route-defs/*"]
+    }
+  }
+}

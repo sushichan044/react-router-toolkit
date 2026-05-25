@@ -1,0 +1,19 @@
+{
+  "name": "@repo/e2e",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "devDependencies": {
+    "@react-router/dev": "catalog:dev",
+    "@types/node": "catalog:dev",
+    "@virtual-live-lab/tsconfig": "catalog:dev",
+    "react-router": "catalog:dev",
+    "react-router-routing-toolkit": "workspace:*",
+    "typescript": "catalog:dev",
+    "vite": "catalog:dev",
+    "vite-plus": "catalog:dev"
+  },
+  "engines": {
+    "node": ">=22.12.0"
+  }
+}
