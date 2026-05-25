@@ -31,8 +31,8 @@ jobs:
 
       - uses: ./.github/actions/setup-env
 
+      - run: vp run build
+
       - run: vp check
 
       - run: vp test
-
-      - run: vp run build
