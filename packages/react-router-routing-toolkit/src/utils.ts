@@ -4,202 +4,193 @@ import type { RouteObject } from "react-router";
 import { matchRoutes } from "react-router";
 
 import type {
-  LayoutChainEntry,
-  LeafRoute,
-  RouteManifest,
-  RouteManifestEntry,
+  PathfulRouteNode,
+  PathlessRouteNode,
+  RouteIndex,
+  RouteNode,
+  RouteTree,
+  TerminalRouteNode,
   UrlMatch,
+  WrapperRouteNode,
 } from "./types";
 import { RouteManifestError } from "./types";
 
-function extractParams(fullPath: string): readonly string[] {
-  const params: string[] = [];
-  for (const segment of fullPath.split("/")) {
-    if (segment.startsWith(":")) {
-      const name = segment.slice(1).replace(/\?$/, "");
-      if (name.length > 0) {
-        params.push(name);
-      }
-    } else if (segment === "*") {
-      params.push("*");
+/** Walk a node depth-first, yielding each descendant in pre-order (parent before children). */
+function* walk(node: RouteNode): Generator<RouteNode> {
+  yield node;
+  if (node.kind === "layout" || node.kind === "branch") {
+    for (const child of node.children) {
+      yield* walk(child);
     }
   }
-  return params;
 }
 
 /**
- * Rebuild the tree of {@link RouteObject}s that `matchRoutes` expects from a flat
- * {@link RouteManifest}.
+ * Build an id → {@link RouteNode} lookup from a {@link RouteTree}.
  *
- * Relies on the manifest's depth-first insertion order so that, when the map is iterated, each
- * entry's `parentId` has already been seen.
+ * Insertion order is depth-first (the synthesized root appears first, then each parent before its
+ * children) — `[...index.keys()]` reflects the tree's pre-order traversal.
  */
-function buildRouteTree(manifest: RouteManifest): RouteObject[] {
-  const childrenByParent = new Map<string | undefined, RouteObject[]>();
-
-  for (const entry of manifest.values()) {
-    const routeObject: RouteObject = entry.index
-      ? {
-          id: entry.id,
-          index: true,
-          caseSensitive: entry.caseSensitive,
-        }
-      : {
-          id: entry.id,
-          path: entry.path,
-          caseSensitive: entry.caseSensitive,
-        };
-
-    const bucket = childrenByParent.get(entry.parentId) ?? [];
-    bucket.push(routeObject);
-    childrenByParent.set(entry.parentId, bucket);
+export function buildRouteIndex(tree: RouteTree): RouteIndex {
+  const map = new Map<string, RouteNode>();
+  for (const node of walk(tree)) {
+    map.set(node.id, node);
   }
-
-  function attachChildren(obj: RouteObject): RouteObject {
-    if (obj.index === true) {
-      return obj;
-    }
-    const children = childrenByParent.get(obj.id);
-    if (children !== undefined && children.length > 0) {
-      return { ...obj, children: children.map(attachChildren) };
-    }
-    return obj;
-  }
-
-  const roots = childrenByParent.get(undefined) ?? [];
-  return roots.map(attachChildren);
+  return map;
 }
 
 /**
- * Look up a manifest entry by id. Throws when the id is missing.
+ * Look up a node by id. Throws when the id is missing — convenient when the caller has already
+ * established (via another path) that the id is valid and a miss indicates a bug.
  *
  * @throws {RouteManifestError}
  */
-export function getRouteById(manifest: RouteManifest, id: string): RouteManifestEntry {
-  const entry = manifest.get(id);
-  if (entry === undefined) {
-    throw new RouteManifestError(`Route id "${id}" is not present in the manifest.`);
+export function getRouteById(index: RouteIndex, id: string): RouteNode {
+  const node = index.get(id);
+  if (node === undefined) {
+    throw new RouteManifestError(`Route id "${id}" is not present in the index.`);
   }
-  return entry;
+  return node;
 }
 
 /**
- * Walk parent pointers from a given route id back to the application root and return the chain in
- * root → leaf order (the requested entry is the last element).
- *
- * @throws {RouteManifestError} When `id` is not present in the manifest
+ * Reverse-lookup a node by its `file` field. Paths are compared after POSIX normalisation. Returns
+ * `undefined` when no node matches.
  */
-export function getLayoutChain(manifest: RouteManifest, id: string): readonly LayoutChainEntry[] {
-  if (!manifest.has(id)) {
-    throw new RouteManifestError(`Route id "${id}" is not present in the manifest.`);
-  }
-  const chain: LayoutChainEntry[] = [];
-  let current: RouteManifestEntry | undefined = manifest.get(id);
-  while (current !== undefined) {
-    chain.unshift({
-      id: current.id,
-      file: current.file,
-      isLayout: current.isLayout,
-      isIndex: current.index,
-    });
-    current = current.parentId !== undefined ? manifest.get(current.parentId) : undefined;
-  }
-  return chain;
-}
-
-/**
- * Reverse-lookup a manifest entry by its `file` field. Paths are compared after POSIX
- * normalisation. Returns `undefined` when no entry matches.
- */
-export function findByFile(
-  manifest: RouteManifest,
-  filePath: string,
-): RouteManifestEntry | undefined {
+export function findByFile(index: RouteIndex, filePath: string): RouteNode | undefined {
   const target = posixPath.normalize(filePath);
-  for (const entry of manifest.values()) {
-    if (posixPath.normalize(entry.file) === target) {
-      return entry;
+  for (const node of index.values()) {
+    if (posixPath.normalize(node.file) === target) {
+      return node;
     }
   }
   return undefined;
 }
 
 /**
- * Enumerate every leaf route in the manifest as URL-pattern-sorted {@link LeafRoute}s. Layout
- * entries and other non-matchable nodes are excluded; index routes and child-less routes are
- * included.
+ * Walk parent pointers from a given route id back to the synthesized root and return the chain in
+ * root → leaf order (the requested node is the last element, the root layout is the first).
+ *
+ * This chain is the "render stack" — the layers React Router renders when this route matches, in
+ * outer-to-inner order.
+ *
+ * @throws {RouteManifestError} When `id` is not present in the index.
  */
-export function listRoutes(manifest: RouteManifest): readonly LeafRoute[] {
-  const results: LeafRoute[] = [];
-  for (const entry of manifest.values()) {
-    if (!entry.isLeaf) {
-      continue;
+export function getRenderChain(index: RouteIndex, id: string): readonly RouteNode[] {
+  if (!index.has(id)) {
+    throw new RouteManifestError(`Route id "${id}" is not present in the index.`);
+  }
+  const chain: RouteNode[] = [];
+  let current: RouteNode | undefined = index.get(id);
+  while (current !== undefined) {
+    chain.unshift(current);
+    current = current.parentId !== undefined ? index.get(current.parentId) : undefined;
+  }
+  return chain;
+}
+
+/**
+ * Enumerate every terminal node ({@link TerminalRouteNode}) in the tree, sorted by `fullPath`.
+ *
+ * "Terminal" here means matchable as the leaf of a URL match — `index` and `leaf` nodes. Wrappers
+ * (`layout`, `branch`) are excluded.
+ */
+export function listRoutes(tree: RouteTree): readonly TerminalRouteNode[] {
+  const results: TerminalRouteNode[] = [];
+  for (const node of walk(tree)) {
+    if (isTerminal(node)) {
+      results.push(node);
     }
-    results.push({
-      id: entry.id,
-      file: entry.file,
-      urlPattern: entry.fullPath,
-      layoutChain: getLayoutChain(manifest, entry.id),
-      params: extractParams(entry.fullPath),
-    });
   }
   results.sort((a, b) => {
-    if (a.urlPattern < b.urlPattern) return -1;
-    if (a.urlPattern > b.urlPattern) return 1;
+    if (a.fullPath < b.fullPath) return -1;
+    if (a.fullPath > b.fullPath) return 1;
     return 0;
   });
   return results;
 }
 
-/**
- * Match a URL against the manifest using React Router's own `matchRoutes`. The returned
- * {@link UrlMatch} carries the resolved leaf entry, the full root → leaf layout chain, and the
- * extracted URL parameters.
- */
-export function matchUrl(manifest: RouteManifest, url: string): UrlMatch | null {
-  const tree = buildRouteTree(manifest);
-  const matches = matchRoutes(tree, url);
-  if (matches === null || matches.length === 0) {
-    return null;
+/** Convert a {@link RouteNode} to a `RouteObject` understood by React Router's `matchRoutes`. */
+function toRouteObject(node: RouteNode): RouteObject {
+  if (node.kind === "index") {
+    // `prefix()` can give an index its own path; React Router's RouteObject keeps the two pieces
+    // separate (`index: true` plus `path`), so we mirror that.
+    return node.path !== undefined
+      ? { id: node.id, index: true, path: node.path, caseSensitive: node.caseSensitive }
+      : { id: node.id, index: true, caseSensitive: node.caseSensitive };
   }
-  const leafMatch = matches[matches.length - 1];
-  if (leafMatch === undefined) {
-    return null;
+  if (node.kind === "leaf") {
+    return { id: node.id, path: node.path, caseSensitive: node.caseSensitive };
   }
-  const leafId = leafMatch.route.id;
-  if (leafId === undefined) {
-    return null;
-  }
-  const leafEntry = manifest.get(leafId);
-  if (leafEntry === undefined) {
-    return null;
-  }
-  return {
-    leaf: leafEntry,
-    layoutChain: getLayoutChain(manifest, leafId),
-    params: leafMatch.params,
-  };
-}
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === "object" && value !== null;
-}
-
-export function getDefaultExport(mod: Record<string, unknown>):
-  | {
-      success: true;
-      value: unknown;
-    }
-  | {
-      success: false;
-    } {
-  if (!isRecord(mod) || !("default" in mod)) {
+  if (node.kind === "branch") {
     return {
-      success: false,
+      id: node.id,
+      path: node.path,
+      caseSensitive: node.caseSensitive,
+      children: node.children.map(toRouteObject),
     };
   }
   return {
-    success: true,
-    value: mod["default"],
+    id: node.id,
+    caseSensitive: node.caseSensitive,
+    children: node.children.map(toRouteObject),
   };
+}
+
+/**
+ * Match a URL against the tree using React Router's own `matchRoutes`. The returned {@link UrlMatch}
+ * carries the terminal node, the full root → terminal render chain, and the extracted URL
+ * parameters.
+ */
+export function matchUrl(tree: RouteTree, url: string): UrlMatch | null {
+  const matches = matchRoutes([toRouteObject(tree)], url);
+  if (matches === null || matches.length === 0) {
+    return null;
+  }
+  const terminalMatch = matches[matches.length - 1];
+  if (terminalMatch === undefined) {
+    return null;
+  }
+  const index = buildRouteIndex(tree);
+  const terminalId = terminalMatch.route.id;
+  if (terminalId === undefined) {
+    return null;
+  }
+  const terminalNode = index.get(terminalId);
+  if (terminalNode === undefined || !isTerminal(terminalNode)) {
+    return null;
+  }
+  return {
+    terminal: terminalNode,
+    renderChain: getRenderChain(index, terminalId),
+    params: terminalMatch.params,
+  };
+}
+
+export function isTerminal(node: RouteNode): node is TerminalRouteNode {
+  return node.kind === "index" || node.kind === "leaf";
+}
+
+export function isWrapper(node: RouteNode): node is WrapperRouteNode {
+  return node.kind === "layout" || node.kind === "branch";
+}
+
+export function isPathful(node: RouteNode): node is PathfulRouteNode {
+  if (node.kind === "leaf" || node.kind === "branch") {
+    return true;
+  }
+  if (node.kind === "index") {
+    return node.path !== undefined;
+  }
+  return false;
+}
+
+export function isPathless(node: RouteNode): node is PathlessRouteNode {
+  if (node.kind === "layout") {
+    return true;
+  }
+  if (node.kind === "index") {
+    return node.path === undefined;
+  }
+  return false;
 }

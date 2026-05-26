@@ -3,12 +3,8 @@ import { fileURLToPath } from "node:url";
 
 import { describe, expect, it } from "vite-plus/test";
 
-import {
-  createRouteManifest,
-  evaluateRoutesFile,
-  RouteEvaluationError,
-  RouteManifestError,
-} from ".";
+import { evaluateRoutesFile, loadRouteTree, RouteEvaluationError, RouteManifestError } from ".";
+import { buildRouteIndex } from "./utils";
 
 const FIXTURES_DIR = fileURLToPath(import.meta.resolve("../test/fixtures"));
 
@@ -39,78 +35,81 @@ describe("evaluateRoutesFile", () => {
   });
 });
 
-describe("createRouteManifest", () => {
-  it("evaluates and flattens a minimal app", async () => {
-    const manifest = await createRouteManifest({ root: fixtureRoot("minimal") });
-    expect(manifest.size).toBe(2);
-    const home = [...manifest.values()].find((e) => e.file === "home.tsx");
-    expect(home?.index).toBe(true);
+describe("loadRouteTree", () => {
+  it("evaluates routes.ts and synthesizes the root.tsx layout at the top", async () => {
+    const tree = await loadRouteTree({ root: fixtureRoot("minimal") });
+    expect(tree.kind).toBe("layout");
+    expect(tree.id).toBe("root");
+    expect(tree.file).toBe("root.tsx");
+
+    const index = buildRouteIndex(tree);
+    expect(index.size).toBe(3); // root + 2 user routes
+    const home = index.get("home");
+    expect(home?.kind).toBe("index");
     expect(home?.fullPath).toBe("/");
   });
 
-  it("preserves the layout → child relationship", async () => {
-    const manifest = await createRouteManifest({
-      root: fixtureRoot("layout-only"),
-    });
-    expect(manifest.size).toBe(3);
-    const login = [...manifest.values()].find((e) => e.file === "login.tsx");
-    const layout = [...manifest.values()].find((e) => e.file === "auth-layout.tsx");
+  it("preserves the layout → child relationship and uses 'root' as the topmost parent", async () => {
+    const tree = await loadRouteTree({ root: fixtureRoot("layout-only") });
+    const index = buildRouteIndex(tree);
+    expect(index.size).toBe(4); // root + 3 user routes
+    const login = [...index.values()].find((n) => n.file === "login.tsx");
+    const layout = [...index.values()].find((n) => n.file === "auth-layout.tsx");
     expect(login?.parentId).toBe(layout?.id);
-    expect(layout?.isLayout).toBe(true);
+    expect(layout?.parentId).toBe("root");
+    expect(layout?.kind).toBe("layout");
   });
 
   it("expands prefix() into joined URL patterns", async () => {
-    const manifest = await createRouteManifest({ root: fixtureRoot("prefix") });
-    const city = [...manifest.values()].find((e) => e.file === "concerts/city.tsx");
+    const tree = await loadRouteTree({ root: fixtureRoot("prefix") });
+    const index = buildRouteIndex(tree);
+    const city = [...index.values()].find((n) => n.file === "concerts/city.tsx");
     expect(city?.fullPath).toBe("/concerts/:city");
-    const home = [...manifest.values()].find((e) => e.file === "concerts/home.tsx");
+    const home = [...index.values()].find((n) => n.file === "concerts/home.tsx");
     expect(home?.fullPath).toBe("/concerts");
+    // prefix() on an index produces an IndexRouteNode that carries the prefix as its own path.
+    expect(home?.kind).toBe("index");
+    expect(home?.kind === "index" && home.path).toBe("concerts");
   });
 
   it("walks deeply nested route trees", async () => {
-    const manifest = await createRouteManifest({
-      root: fixtureRoot("nested-deep"),
-    });
-    expect(manifest.size).toBe(4);
-    const innerIndex = [...manifest.values()].find((e) => e.file === "inner-index.tsx");
+    const tree = await loadRouteTree({ root: fixtureRoot("nested-deep") });
+    const index = buildRouteIndex(tree);
+    expect(index.size).toBe(5); // root + 4 user routes
+    const innerIndex = [...index.values()].find((n) => n.file === "inner-index.tsx");
     expect(innerIndex?.fullPath).toBe("/section/:id");
   });
 
   it("preserves splat segments in fullPath", async () => {
-    const manifest = await createRouteManifest({ root: fixtureRoot("splat") });
-    const files = [...manifest.values()].find((e) => e.file === "files.tsx");
+    const tree = await loadRouteTree({ root: fixtureRoot("splat") });
+    const files = [...buildRouteIndex(tree).values()].find((n) => n.file === "files.tsx");
     expect(files?.fullPath).toBe("/files/*");
   });
 
   it("uses an explicit id when one is given", async () => {
-    const manifest = await createRouteManifest({
-      root: fixtureRoot("explicit-id"),
-    });
-    expect(manifest.has("my-about")).toBe(true);
+    const tree = await loadRouteTree({ root: fixtureRoot("explicit-id") });
+    expect(buildRouteIndex(tree).has("my-about")).toBe(true);
   });
 
   it("throws RouteManifestError when two entries share an id", async () => {
-    await expect(createRouteManifest({ root: fixtureRoot("id-conflict") })).rejects.toBeInstanceOf(
+    await expect(loadRouteTree({ root: fixtureRoot("id-conflict") })).rejects.toBeInstanceOf(
       RouteManifestError,
     );
   });
 
   it("normalises absolute file paths produced by `relative()` back to app-relative", async () => {
-    const manifest = await createRouteManifest({
-      root: fixtureRoot("relative-helper"),
-    });
-    const files = [...manifest.values()].map((entry) => entry.file);
+    const tree = await loadRouteTree({ root: fixtureRoot("relative-helper") });
+    const index = buildRouteIndex(tree);
+    const files = [...index.values()].map((node) => node.file);
     expect(files).toContain("home.tsx");
     expect(files).toContain("about.tsx");
-    const home = [...manifest.values()].find((e) => e.file === "home.tsx");
+    const home = [...index.values()].find((n) => n.file === "home.tsx");
     expect(home?.id).toBe("home");
   });
 
   it("loads the project's vite.config.ts so aliases resolve", async () => {
-    const manifest = await createRouteManifest({
-      root: fixtureRoot("with-vite-config"),
-    });
-    const city = [...manifest.values()].find((e) => e.file === "city.tsx");
+    const tree = await loadRouteTree({ root: fixtureRoot("with-vite-config") });
+    const city = [...buildRouteIndex(tree).values()].find((n) => n.file === "city.tsx");
     expect(city?.fullPath).toBe("/:city");
   });
 });

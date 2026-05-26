@@ -2,9 +2,21 @@ import { resolve as resolvePath } from "node:path";
 
 import { createServer, isRunnableDevEnvironment, ViteDevServer } from "vite";
 
-import type { CreateRouteManifestOptions, RouteConfigEntry } from "./types";
+import type { LoadRoutesOptions, RouteConfigEntry } from "./types";
 import { RouteEvaluationError, RouteValidationError } from "./types";
-import { getDefaultExport } from "./utils";
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null;
+}
+
+function getDefaultExport(
+  mod: Record<string, unknown>,
+): { success: true; value: unknown } | { success: false } {
+  if (!isRecord(mod) || !("default" in mod)) {
+    return { success: false };
+  }
+  return { success: true, value: mod["default"] };
+}
 
 function isRouteConfigEntry(value: unknown): value is RouteConfigEntry {
   if (typeof value !== "object" || value === null) {
@@ -33,8 +45,8 @@ function isRouteConfigEntryArray(value: unknown): value is RouteConfigEntry[] {
  *   `RouteConfigEntry`-shaped objects.
  */
 export async function evaluateRoutesFile(
-  options: CreateRouteManifestOptions = {},
-): Promise<RouteConfigEntry[]> {
+  options: LoadRoutesOptions = {},
+): Promise<readonly RouteConfigEntry[]> {
   const root = options.root ?? process.cwd();
   const appDir = resolvePath(root, "app");
   const routesFile = resolvePath(appDir, "routes.ts");

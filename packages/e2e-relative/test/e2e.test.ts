@@ -1,13 +1,20 @@
-import { createRouteManifest, listRoutes, matchUrl } from "react-router-routing-toolkit";
+import {
+  buildRouteIndex,
+  getRenderChain,
+  listRoutes,
+  loadRouteTree,
+  matchUrl,
+} from "react-router-routing-toolkit";
 import { describe, expect, it } from "vite-plus/test";
 
-describe("createRouteManifest against a real React Router app using relative() helpers", () => {
-  it("evaluates routes.ts and rewrites absolute file paths to app-relative", async () => {
-    const manifest = await createRouteManifest({
-      root: import.meta.dirname.replace(/\/test$/, ""),
-    });
+const projectRoot = import.meta.dirname.replace(/\/test$/, "");
 
-    const files = [...manifest.values()].map((entry) => entry.file);
+describe("loadRouteTree against a real React Router app using relative() helpers", () => {
+  it("evaluates routes.ts and rewrites absolute file paths to app-relative", async () => {
+    const tree = await loadRouteTree({ root: projectRoot });
+
+    const files = [...buildRouteIndex(tree).values()].map((node) => node.file);
+    expect(files).toContain("root.tsx");
     expect(files).toContain("home.tsx");
     expect(files).toContain("auth-layout.tsx");
     expect(files).toContain("login.tsx");
@@ -16,27 +23,25 @@ describe("createRouteManifest against a real React Router app using relative() h
     expect(files).toContain("files.tsx");
   });
 
-  it("rebuilds layout chains correctly", async () => {
-    const manifest = await createRouteManifest({
-      root: import.meta.dirname.replace(/\/test$/, ""),
-    });
+  it("renderChain begins at the synthesized root layout", async () => {
+    const tree = await loadRouteTree({ root: projectRoot });
+    const index = buildRouteIndex(tree);
 
-    const leaves = listRoutes(manifest);
-    const login = leaves.find((leaf) => leaf.file === "login.tsx");
-    expect(login?.layoutChain.map((c) => c.file)).toEqual(["auth-layout.tsx", "login.tsx"]);
+    const login = listRoutes(tree).find((leaf) => leaf.file === "login.tsx");
+    expect(login).toBeDefined();
+    const chain = getRenderChain(index, login!.id);
+    expect(chain.map((c) => c.file)).toEqual(["root.tsx", "auth-layout.tsx", "login.tsx"]);
   });
 
-  it("matches URLs against the manifest", async () => {
-    const manifest = await createRouteManifest({
-      root: import.meta.dirname.replace(/\/test$/, ""),
-    });
+  it("matches URLs against the tree", async () => {
+    const tree = await loadRouteTree({ root: projectRoot });
 
-    const cityMatch = matchUrl(manifest, "/concerts/tokyo");
-    expect(cityMatch?.leaf.file).toBe("concerts/city.tsx");
+    const cityMatch = matchUrl(tree, "/concerts/tokyo");
+    expect(cityMatch?.terminal.file).toBe("concerts/city.tsx");
     expect(cityMatch?.params["city"]).toBe("tokyo");
 
-    const splatMatch = matchUrl(manifest, "/files/a/b/c");
-    expect(splatMatch?.leaf.file).toBe("files.tsx");
+    const splatMatch = matchUrl(tree, "/files/a/b/c");
+    expect(splatMatch?.terminal.file).toBe("files.tsx");
     expect(splatMatch?.params["*"]).toBe("a/b/c");
   });
 });

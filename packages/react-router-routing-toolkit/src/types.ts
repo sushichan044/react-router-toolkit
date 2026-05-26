@@ -2,10 +2,9 @@
  * A single route entry as returned by React Router's `route()`, `index()`, `layout()`, and
  * `prefix()` helpers from `@react-router/dev/routes`.
  *
- * We define this structurally instead of importing it from `@react-router/dev` because that
- * package's `RouteConfigEntry` type is part of an internal module surface and not covered by the
- * package's public type stability guarantees. The runtime shape matches what those helpers actually
- * return.
+ * Defined structurally instead of importing from `@react-router/dev` because that package's
+ * `RouteConfigEntry` type is part of an internal module surface and not covered by the package's
+ * public type stability guarantees. The runtime shape matches what those helpers actually return.
  */
 export interface RouteConfigEntry {
   readonly id?: string;
@@ -16,84 +15,133 @@ export interface RouteConfigEntry {
   readonly children?: readonly RouteConfigEntry[];
 }
 
-/** A single entry in the flattened {@link RouteManifest}. */
-export interface RouteManifestEntry {
-  /** Explicit `id` from `routes.ts`, otherwise `path.normalize(stripExt(file))`. */
+interface RouteNodeBase {
   readonly id: string;
-  /** Parent route id. Top-level entries have `undefined`. */
+  /** Parent node id. Only the synthesized root has `undefined`. */
   readonly parentId: string | undefined;
-  /** `app/` relative path of the route module file. */
+  /** `app/`-relative POSIX path of the route module file. */
   readonly file: string;
-  /** The route's own path segment. `undefined` for layout and index entries. */
-  readonly path: string | undefined;
-  readonly index: boolean;
-  readonly caseSensitive: boolean;
-  /**
-   * Full URL pattern from the application root to this entry. Index and layout entries inherit
-   * their parent's `fullPath`.
-   */
+  /** Fully-resolved URL pattern from the application root to this node. */
   readonly fullPath: string;
-  /**
-   * True when this entry can be matched as a leaf — either an `index` entry or an entry without
-   * children.
-   */
-  readonly isLeaf: boolean;
-  /**
-   * True when this entry acts purely as a layout — has children but no `path` of its own and is not
-   * an index.
-   */
-  readonly isLayout: boolean;
-}
-
-/**
- * Flattened `id` → {@link RouteManifestEntry} map. Insertion order is depth-first: a parent always
- * appears before its children.
- */
-export type RouteManifest = ReadonlyMap<string, RouteManifestEntry>;
-
-/**
- * One step in the layout chain returned by {@link RouteManifest} consumers. Chains are ordered from
- * root (index 0) down to the leaf.
- */
-export interface LayoutChainEntry {
-  readonly id: string;
-  readonly file: string;
-  readonly isLayout: boolean;
-  readonly isIndex: boolean;
-}
-
-/** One enumerated leaf route, suitable for "list every URL in the app" reports. */
-export interface LeafRoute {
-  readonly id: string;
-  readonly file: string;
-  /** Fully-resolved URL pattern, e.g. `/concerts/:city`. */
-  readonly urlPattern: string;
-  /** Root → leaf layout chain (leaf included as the last element). */
-  readonly layoutChain: readonly LayoutChainEntry[];
-  /**
-   * Dynamic parameter names extracted from `urlPattern`. Splat segments appear as the literal
-   * `"*"`.
-   */
+  readonly caseSensitive: boolean;
+  /** Dynamic parameter names extracted from `fullPath`. Splat segments appear as the literal `"*"`. */
   readonly params: readonly string[];
 }
 
-/** Result of matching a URL against the manifest. */
+/**
+ * An `index` route — terminal (no children).
+ *
+ * `path` is `undefined` for a bare `index()` call, and a string when produced by `prefix("X",
+ * [index(...)])` (React Router rewrites the wrapped index to carry the prefix path).
+ */
+export interface IndexRouteNode extends RouteNodeBase {
+  readonly kind: "index";
+  readonly path: string | undefined;
+}
+
+/**
+ * A pathless wrapper route with children — used by `layout()` and by the synthesized `app/root.tsx`
+ * sitting at the top of every tree.
+ */
+export interface LayoutRouteNode extends RouteNodeBase {
+  readonly kind: "layout";
+  /** Always non-empty. */
+  readonly children: readonly RouteNode[];
+}
+
+/** A terminal route with its own path segment — `route(path, file)` with no children. */
+export interface LeafRouteNode extends RouteNodeBase {
+  readonly kind: "leaf";
+  readonly path: string;
+}
+
+/** A wrapper route that also carries its own path segment — `route(path, file, [...children])`. */
+export interface BranchRouteNode extends RouteNodeBase {
+  readonly kind: "branch";
+  readonly path: string;
+  /** Always non-empty. */
+  readonly children: readonly RouteNode[];
+}
+
+/** Any node in a {@link RouteTree}. Discriminated by `kind`. */
+export type RouteNode = IndexRouteNode | LayoutRouteNode | LeafRouteNode | BranchRouteNode;
+
+/**
+ * The root of a complete route tree.
+ *
+ * Materialised by `buildRouteTree` / `loadRouteTree` as a synthesized layout representing
+ * `app/root.tsx` (React Router framework mode requires this file). The type narrows
+ * {@link LayoutRouteNode} with the root-only invariants that the synthesizer guarantees:
+ *
+ * - `id` is the reserved literal `"root"`
+ * - `parentId` is `undefined` (no parent above)
+ * - `fullPath` is the literal `"/"` (the application origin)
+ *
+ * Sub-trees rooted at any other node are typed as {@link RouteNode}, not `RouteTree`. Only the
+ * synthesized root carries this brand, which is why `listRoutes` and `matchUrl` take `RouteTree`
+ * rather than `RouteNode` — they semantically operate on the whole app, not on an arbitrary
+ * subtree.
+ */
+export interface RouteTree extends LayoutRouteNode {
+  readonly id: "root";
+  readonly parentId: undefined;
+  readonly fullPath: "/";
+}
+
+/**
+ * Id → node lookup derived from a {@link RouteTree}. Built via `buildRouteIndex(tree)`.
+ *
+ * Insertion order is depth-first: the root appears first, then each parent before its children.
+ */
+export type RouteIndex = ReadonlyMap<string, RouteNode>;
+
+/** Nodes that match as the leaf of a URL match — `index` or `leaf`. */
+export type TerminalRouteNode = IndexRouteNode | LeafRouteNode;
+
+/** Nodes that wrap children — `layout` or `branch`. */
+export type WrapperRouteNode = LayoutRouteNode | BranchRouteNode;
+
+/**
+ * Nodes that do not contribute their own path segment.
+ *
+ * `LayoutRouteNode` is always pathless; `IndexRouteNode` is pathless when `path === undefined`
+ * (i.e., a bare `index()` that did not pass through `prefix()`).
+ */
+export type PathlessRouteNode = LayoutRouteNode | (IndexRouteNode & { readonly path: undefined });
+
+/**
+ * Nodes that carry their own path segment.
+ *
+ * `LeafRouteNode` and `BranchRouteNode` are always pathful; `IndexRouteNode` is pathful when it
+ * came out of `prefix("X", [index(...)])`.
+ */
+export type PathfulRouteNode =
+  | LeafRouteNode
+  | BranchRouteNode
+  | (IndexRouteNode & { readonly path: string });
+
+/** Result of matching a URL against a {@link RouteTree}. */
 export interface UrlMatch {
-  readonly leaf: RouteManifestEntry;
-  readonly layoutChain: readonly LayoutChainEntry[];
+  /** The matched terminal node. */
+  readonly terminal: TerminalRouteNode;
+  /**
+   * Root → terminal node stack. Always starts with the synthesized root layout and ends with
+   * {@link terminal}.
+   */
+  readonly renderChain: readonly RouteNode[];
+  /** Extracted URL parameters. */
   readonly params: Readonly<Record<string, string | undefined>>;
 }
 
 /**
- * Options accepted by {@link "./index.ts".createRouteManifest} and
- * {@link "./index.ts".evaluateRoutesFile}.
+ * Options accepted by `loadRouteTree` and `evaluateRoutesFile`.
  *
  * The user project must have a `vite.config.ts` registering the React Router Vite plugin
  * (`@react-router/dev/vite`); the toolkit relies on that plugin to configure
  * `globalThis.__reactRouterAppDirectory` before `routes.ts` is evaluated. The routes file is always
  * resolved to `${root}/app/routes.ts` — customising the filename is intentionally not supported.
  */
-export interface CreateRouteManifestOptions {
+export interface LoadRoutesOptions {
   /**
    * Vite `root`. Defaults to `process.cwd()`. The routes file is always resolved to
    * `${root}/app/routes.ts`, and Vite is left to its default `vite.config.ts` search rooted here.
@@ -131,7 +179,10 @@ export class RouteEvaluationError extends RouteToolkitError {
   }
 }
 
-/** Thrown when flattening the evaluated route tree fails (e.g. duplicate id). */
+/**
+ * Thrown when assembling the route tree fails — duplicate ids, conflict with the synthesized
+ * `"root"` id, or `app/root.tsx` not present on disk.
+ */
 export class RouteManifestError extends RouteToolkitError {
   override readonly kind: "manifest";
   readonly conflictingId: string | undefined;
