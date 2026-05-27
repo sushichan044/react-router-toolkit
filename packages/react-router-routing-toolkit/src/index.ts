@@ -12,7 +12,7 @@ import type { LoadRoutesOptions, RouteTree } from "./types";
  * {@link buildRouteTree}.
  */
 export async function loadRouteTree(options?: LoadRoutesOptions): Promise<RouteTree> {
-  const root = options?.root ?? process.cwd();
+  const root = options?.vite?.root ?? process.cwd();
   const entries = await evaluateRoutesFile(options);
   return buildRouteTree(entries, { appDirectory: resolvePath(root, "app") });
 }

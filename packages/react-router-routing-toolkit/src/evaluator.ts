@@ -1,22 +1,10 @@
+import assert from "node:assert/strict";
 import { resolve as resolvePath } from "node:path";
 
 import { createServer, isRunnableDevEnvironment, ViteDevServer } from "vite";
 
 import type { LoadRoutesOptions, RouteConfigEntry } from "./types";
-import { RouteEvaluationError, RouteValidationError } from "./types";
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === "object" && value !== null;
-}
-
-function getDefaultExport(
-  mod: Record<string, unknown>,
-): { success: true; value: unknown } | { success: false } {
-  if (!isRecord(mod) || !("default" in mod)) {
-    return { success: false };
-  }
-  return { success: true, value: mod["default"] };
-}
+import { RouteEvaluationError, RouteToolkitError, RouteValidationError } from "./types";
 
 function isRouteConfigEntry(value: unknown): value is RouteConfigEntry {
   if (typeof value !== "object" || value === null) {
@@ -38,6 +26,8 @@ function isRouteConfigEntryArray(value: unknown): value is RouteConfigEntry[] {
  *   Router Vite plugin and any path aliases match what the production build sees.
  * - `globalThis.__reactRouterAppDirectory` is published by the React Router Vite plugin
  *   (`@react-router/dev/vite`), which the user project must register.
+ * - To select an environment-dependent route config, pass a dedicated `import.meta` or
+ *   `import.meta.env` property through `options.vite.define`; `process.env` is not injected.
  * - The dev server is disposed automatically through `await using`.
  *
  * @throws {RouteEvaluationError} When Vite cannot load or execute the file.
@@ -47,32 +37,59 @@ function isRouteConfigEntryArray(value: unknown): value is RouteConfigEntry[] {
 export async function evaluateRoutesFile(
   options: LoadRoutesOptions = {},
 ): Promise<readonly RouteConfigEntry[]> {
-  const root = options.root ?? process.cwd();
-  const appDir = resolvePath(root, "app");
-  const routesFile = resolvePath(appDir, "routes.ts");
-
   await using server = await createDisposableServer({
-    root,
+    root: options.vite?.root,
     server: {
       hmr: false,
     },
     environments: {
-      ssr: {},
+      ssr: {
+        optimizeDeps: {
+          include: ["@react-router/dev/routes", "@react-router/fs-routes"],
+          noDiscovery: true,
+        },
+        resolve: {
+          noExternal: ["@react-router/dev", "@react-router/fs-routes"],
+        },
+      },
     },
-    optimizeDeps: {
-      noDiscovery: true,
-    },
+    plugins: [
+      {
+        name: "react-router-routing-toolkit:shim",
+        config: (userConfig) => {
+          if (import.meta.vitest && !import.meta.e2e) {
+            return;
+          }
+          if (!userConfig.root) {
+            throw new RouteToolkitError(
+              "Specify `root` of vite config to continue evaluating with testing shim.",
+              { kind: "evaluation" },
+            );
+          }
+
+          const _appDir = resolvePath(userConfig.root, "app");
+          return {
+            define: {
+              // inject shims for test fixtures
+              "globalThis.__reactRouterAppDirectory": JSON.stringify(_appDir),
+            },
+          };
+        },
+      },
+      {
+        name: "react-router-routing-toolkit:user-config",
+        config: () => {
+          return {
+            define: options.vite?.define,
+          };
+        },
+      },
+    ],
     logLevel: "silent",
-    ...(import.meta.vitest && !import.meta.e2e
-      ? {
-          // inject shims for test fixtures
-          define: {
-            // https://github.com/remix-run/react-router/blob/abcabd593fb8abe5c30bd42d95489fd9df2ef243/packages/react-router-dev/config/routes.ts#L7-L13
-            "globalThis.__reactRouterAppDirectory": JSON.stringify(appDir),
-          },
-        }
-      : {}),
   });
+
+  const appDir = resolvePath(server.config.root, "app");
+  const routesFile = resolvePath(appDir, "routes.ts");
 
   const ssrEnv = server.environments["ssr"];
   if (!isRunnableDevEnvironment(ssrEnv)) {
@@ -85,7 +102,7 @@ export async function evaluateRoutesFile(
 
   let mod: Record<string, unknown>;
   try {
-    mod = (await ssrEnv.runner.import(routesFile)) as Record<string, unknown>;
+    mod = await ssrEnv.runner.import(routesFile);
   } catch (cause) {
     const detail = cause instanceof Error ? cause.message : String(cause);
     throw new RouteEvaluationError(`Failed to evaluate "${routesFile}": ${detail}`, {
@@ -114,10 +131,25 @@ async function createDisposableServer(
   ...args: Parameters<typeof createServer>
 ): Promise<AsyncDisposable & ViteDevServer> {
   const server = await createServer(...args);
+  // Inject `define`-based shims into react-router packages.
+  await server.environments["ssr"].depsOptimizer?.init();
 
   return Object.assign(server, {
     [Symbol.asyncDispose]: async () => {
       await server.close();
     },
   });
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null;
+}
+
+function getDefaultExport(
+  mod: Record<string, unknown>,
+): { success: true; value: unknown } | { success: false } {
+  if (!isRecord(mod) || !("default" in mod)) {
+    return { success: false };
+  }
+  return { success: true, value: mod["default"] };
 }

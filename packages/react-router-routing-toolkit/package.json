@@ -43,6 +43,7 @@
   "devDependencies": {
     "@arethetypeswrong/core": "catalog:dev",
     "@react-router/dev": "catalog:dev",
+    "@react-router/fs-routes": "catalog:dev",
     "@types/node": "catalog:dev",
     "@typescript/native-preview": "catalog:dev",
     "@virtual-live-lab/tsconfig": "catalog:dev",

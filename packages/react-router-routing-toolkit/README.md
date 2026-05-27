@@ -48,7 +48,7 @@ import {
   matchUrl,
 } from "react-router-routing-toolkit";
 
-const tree = await loadRouteTree({ root: process.cwd() });
+const tree = await loadRouteTree({ vite: { root: process.cwd() } });
 
 // Walk the tree directly (children are nested).
 console.log(tree.kind, tree.id); // "layout", "root"
@@ -136,6 +136,49 @@ Spin up a Vite dev server, run `app/routes.ts` through the SSR ModuleRunner,
 and return the array its default export resolves to. The server is disposed
 automatically through `await using`.
 
+#### Conditional route configuration
+
+`app/routes.ts` is evaluated as an SSR module, but the toolkit does not inject
+or override `process.env` for that evaluation. Do not use `process.env` to
+select the route configuration when a caller must evaluate a particular
+variant.
+
+Instead, make the switch explicit with Vite `define`. For example, while
+migrating from filesystem routes to a manually maintained route config:
+
+```ts
+// app/vite-env.d.ts
+interface ImportMeta {
+  readonly routingToolkitUseFsRoutes: boolean;
+}
+```
+
+```ts
+// app/routes.ts
+import { flatRoutes } from "@react-router/fs-routes";
+import { index, route } from "@react-router/dev/routes";
+
+export default import.meta.routingToolkitUseFsRoutes
+  ? flatRoutes()
+  : [index("home.tsx"), route("about", "about.tsx")];
+```
+
+```ts
+const tree = await loadRouteTree({
+  vite: {
+    root: process.cwd(),
+    define: {
+      "import.meta.routingToolkitUseFsRoutes": "true",
+    },
+  },
+});
+```
+
+The same pattern can define a dedicated `import.meta.env` member, for example
+`"import.meta.env.ROUTE_SOURCE": JSON.stringify("filesystem")`. Prefer a
+dedicated switch over exposing arbitrary environment variables to route
+evaluation.
+
 #### `buildRouteTree(entries, options): RouteTree`
 
 Depth-first traversal of the `RouteConfigEntry[]` tree. Synthesizes
@@ -161,8 +204,7 @@ top-level layout, with every input entry nested as its child.
 
 ```ts
 interface LoadRoutesOptions {
-  /** Vite `root`. Defaults to `process.cwd()`. */
-  root?: string;
+  vite?: Pick<UserConfig, "define" | "root">;
 }
 
 interface BuildRouteTreeOptions {
@@ -200,3 +242,7 @@ All errors extend `RouteToolkitError`. The `kind` field discriminates:
 - **HMR is not supported.** Each `loadRouteTree` call starts a fresh Vite
   dev server, evaluates the routes once, and tears it down. Call it again to
   pick up changes.
+- **Environment-dependent route configs.** Per-evaluation `process.env`
+  injection is not supported. Express intentional variants as dedicated
+  compile-time values under `vite.define`, such as an `import.meta` or
+  `import.meta.env` property.

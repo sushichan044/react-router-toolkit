@@ -1,3 +1,5 @@
+import { UserConfig } from "vite";
+
 /**
  * A single route entry as returned by React Router's `route()`, `index()`, `layout()`, and
  * `prefix()` helpers from `@react-router/dev/routes`.
@@ -143,10 +145,11 @@ export interface UrlMatch {
  */
 export interface LoadRoutesOptions {
   /**
-   * Vite `root`. Defaults to `process.cwd()`. The routes file is always resolved to
-   * `${root}/app/routes.ts`, and Vite is left to its default `vite.config.ts` search rooted here.
+   * Vite settings used when evaluating `app/routes.ts`. Use `define` with a dedicated `import.meta`
+   * or `import.meta.env` property when the route configuration must vary per evaluation; the
+   * evaluator does not inject or override `process.env`.
    */
-  readonly root?: string;
+  readonly vite?: Pick<UserConfig, "define" | "root">;
 }
 
 type RouteToolkitErrorKind = "evaluation" | "manifest" | "validation";

@@ -12,6 +12,9 @@ catalogs:
     '@react-router/dev':
       specifier: 7.15.1
       version: 7.15.1
+    '@react-router/fs-routes':
+      specifier: ^7.15.1
+      version: 7.15.1
     '@types/node':
       specifier: 25.9.1
       version: 25.9.1
@@ -131,6 +134,9 @@ importers:
       '@react-router/dev':
         specifier: catalog:dev
         version: 7.15.1(@types/node@25.9.1)(lightningcss@1.32.0)(react-router@7.15.1(react@19.2.6))(typescript@6.0.3)(vite@8.0.14(@types/node@25.9.1)(esbuild@0.27.7))
+      '@react-router/fs-routes':
+        specifier: catalog:dev
+        version: 7.15.1(@react-router/dev@7.15.1(@types/node@25.9.1)(lightningcss@1.32.0)(react-router@7.15.1(react@19.2.6))(typescript@6.0.3)(vite@8.0.14(@types/node@25.9.1)(esbuild@0.27.7)))(typescript@6.0.3)
       '@types/node':
         specifier: catalog:dev
         version: 25.9.1
@@ -904,6 +910,16 @@ packages:
       wrangler:
         optional: true
 
+  '@react-router/fs-routes@7.15.1':
+    resolution: {integrity: sha512-rKRszgD0h9O4UrLJl3jWBBke3RghHxZp6Bc+JRc6nsuBt7hF0sT4V7Af3EoBLtUSo2hn75Vr4T++yJL4ADBNCA==, tarball: https://registry.npmjs.org/@react-router/fs-routes/-/fs-routes-7.15.1.tgz}
+    engines: {node: '>=20.0.0'}
+    peerDependencies:
+      '@react-router/dev': ^7.15.1
+      typescript: ^5.1.0 || ^6.0.0
+    peerDependenciesMeta:
+      typescript:
+        optional: true
+
   '@react-router/node@7.15.1':
     resolution: {integrity: sha512-lv68RaqmIa/ZRlIrGcl79HimaqpU3yV1CFKnmItU+xqI+xn9g5fqsh2Vj2LdNjnlzJgVsRMEpnv00t/6RgDrgw==, tarball: https://registry.npmjs.org/@react-router/node/-/node-7.15.1.tgz}
     engines: {node: '>=20.0.0'}
@@ -1400,6 +1416,9 @@ packages:
   babel-dead-code-elimination@1.0.12:
     resolution: {integrity: sha512-GERT7L2TiYcYDtYk1IpD+ASAYXjKbLTDPhBtYj7X1NuRMDTMtAx9kyBenub1Ev41lo91OHCKdmP+egTDmfQ7Ig==, tarball: https://registry.npmjs.org/babel-dead-code-elimination/-/babel-dead-code-elimination-1.0.12.tgz}
 
+  balanced-match@1.0.2:
+    resolution: {integrity: sha512-3oSeUO0TMV67hN1AmbXsK4yaqU7tjiHlbxRDZOpH0KW9+CeX4bRAaX0Anxt0tx2MrpRpWwQaPwIlISEJhYU5Pw==, tarball: https://registry.npmjs.org/balanced-match/-/balanced-match-1.0.2.tgz}
+
   baseline-browser-mapping@2.10.32:
     resolution: {integrity: sha512-wbPvpyjJPC0zdfdKXxqEL3Ea+bOMD/87X4lftiJkkaBiuG6ALQy1SLmEd7BSmVCuwCQsBrCamgBoLyfFDD1EPg==, tarball: https://registry.npmjs.org/baseline-browser-mapping/-/baseline-browser-mapping-2.10.32.tgz}
     engines: {node: '>=6.0.0'}
@@ -1408,6 +1427,9 @@ packages:
   better-path-resolve@1.0.0:
     resolution: {integrity: sha512-pbnl5XzGBdrFU/wT4jqmJVPn2B6UHPBOhzMQkY/SPUPB6QtUXtmBHBIwCbXJol93mOpGMnQyP/+BB19q04xj7g==, tarball: https://registry.npmjs.org/better-path-resolve/-/better-path-resolve-1.0.0.tgz}
     engines: {node: '>=4'}
+
+  brace-expansion@2.1.1:
+    resolution: {integrity: sha512-WR1cURNjuvBLMZBMbqM0UoE+WAfdUcEV1ccD8PVBVOI+Z3ND4+SZbN8RsfT2bMuG1qwz5RFvPukSZm5fF2D5eA==, tarball: https://registry.npmjs.org/brace-expansion/-/brace-expansion-2.1.1.tgz}
 
   braces@3.0.3:
     resolution: {integrity: sha512-yQbXgO/OSZVD2IsiLlro+7Hf6Q18EJrKSEsdoMzKePKXct3gvD8oLcOQdIzGupr5Fj+EDe8gO/lxc1BzfMpxvA==, tarball: https://registry.npmjs.org/braces/-/braces-3.0.3.tgz}
@@ -1746,6 +1768,10 @@ packages:
   micromatch@4.0.8:
     resolution: {integrity: sha512-PXwfBhYu0hBCPw8Dn0E+WDYb7af3dSLVWKi3HGv84IdF4TyFoC0ysxFd0Goxw7nSv4T/PzEJQxsYsEiFCKo2BA==, tarball: https://registry.npmjs.org/micromatch/-/micromatch-4.0.8.tgz}
     engines: {node: '>=8.6'}
+
+  minimatch@9.0.9:
+    resolution: {integrity: sha512-OBwBN9AL4dqmETlpS2zasx+vTeWclWzkblfZk7KTA5j3jeOONz/tRCnZomUyvNg83wL5Zv9Ss6HMJXAgL8R2Yg==, tarball: https://registry.npmjs.org/minimatch/-/minimatch-9.0.9.tgz}
+    engines: {node: '>=16 || 14 >=14.17'}
 
   mri@1.2.0:
     resolution: {integrity: sha512-tzzskb3bG8LvYGFF/mDTpq3jpI6Q9wc3LEmBaghu+DdCssd1FakN7Bc0hVNmEyGq1bq3RgfkCb3cmQLpNPOroA==, tarball: https://registry.npmjs.org/mri/-/mri-1.2.0.tgz}
@@ -2926,6 +2952,13 @@ snapshots:
       - tsx
       - yaml
 
+  '@react-router/fs-routes@7.15.1(@react-router/dev@7.15.1(@types/node@25.9.1)(lightningcss@1.32.0)(react-router@7.15.1(react@19.2.6))(typescript@6.0.3)(vite@8.0.14(@types/node@25.9.1)(esbuild@0.27.7)))(typescript@6.0.3)':
+    dependencies:
+      '@react-router/dev': 7.15.1(@types/node@25.9.1)(lightningcss@1.32.0)(react-router@7.15.1(react@19.2.6))(typescript@6.0.3)(vite@8.0.14(@types/node@25.9.1)(esbuild@0.27.7))
+      minimatch: 9.0.9
+    optionalDependencies:
+      typescript: 6.0.3
+
   '@react-router/node@7.15.1(react-router@7.15.1(react@19.2.6))(typescript@6.0.3)':
     dependencies:
       '@mjackson/node-fetch-server': 0.2.0
@@ -3222,11 +3255,17 @@ snapshots:
     transitivePeerDependencies:
       - supports-color
 
+  balanced-match@1.0.2: {}
+
   baseline-browser-mapping@2.10.32: {}
 
   better-path-resolve@1.0.0:
     dependencies:
       is-windows: 1.0.2
+
+  brace-expansion@2.1.1:
+    dependencies:
+      balanced-match: 1.0.2
 
   braces@3.0.3:
     dependencies:
@@ -3509,6 +3548,10 @@ snapshots:
     dependencies:
       braces: 3.0.3
       picomatch: 2.3.2
+
+  minimatch@9.0.9:
+    dependencies:
+      brace-expansion: 2.1.1
 
   mri@1.2.0: {}
 

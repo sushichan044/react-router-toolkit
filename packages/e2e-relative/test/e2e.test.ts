@@ -11,7 +11,7 @@ const projectRoot = import.meta.dirname.replace(/\/test$/, "");
 
 describe("loadRouteTree against a real React Router app using relative() helpers", () => {
   it("evaluates routes.ts and rewrites absolute file paths to app-relative", async () => {
-    const tree = await loadRouteTree({ root: projectRoot });
+    const tree = await loadRouteTree({ vite: { root: projectRoot } });
 
     const files = [...buildRouteIndex(tree).values()].map((node) => node.file);
     expect(files).toContain("root.tsx");
@@ -24,7 +24,7 @@ describe("loadRouteTree against a real React Router app using relative() helpers
   });
 
   it("renderChain begins at the synthesized root layout", async () => {
-    const tree = await loadRouteTree({ root: projectRoot });
+    const tree = await loadRouteTree({ vite: { root: projectRoot } });
     const index = buildRouteIndex(tree);
 
     const login = listRoutes(tree).find((leaf) => leaf.file === "login.tsx");
@@ -34,7 +34,7 @@ describe("loadRouteTree against a real React Router app using relative() helpers
   });
 
   it("matches URLs against the tree", async () => {
-    const tree = await loadRouteTree({ root: projectRoot });
+    const tree = await loadRouteTree({ vite: { root: projectRoot } });
 
     const cityMatch = matchUrl(tree, "/concerts/tokyo");
     expect(cityMatch?.terminal.file).toBe("concerts/city.tsx");
