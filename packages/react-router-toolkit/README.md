@@ -1,4 +1,4 @@
-# react-router-routing-toolkit
+# react-router-toolkit
 
 Load a React Router (Framework Mode) `app/routes.ts` file the same way React
 Router does at build time, and inspect the result as a typed route tree. Built
@@ -17,7 +17,7 @@ writing static-analysis tooling like linter plugins:
 ## Install
 
 ```sh
-pnpm add -D react-router-routing-toolkit
+pnpm add -D react-router-toolkit
 ```
 
 `vite` and `react-router` must already be installed in the host project
@@ -49,7 +49,7 @@ import {
   listRoutes,
   loadRouteTree,
   matchUrl,
-} from "react-router-routing-toolkit";
+} from "react-router-toolkit";
 
 const tree = await loadRouteTree({ root: process.cwd() });
 

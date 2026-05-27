@@ -86,13 +86,13 @@ async function buildInlineConfig(
     plugins: [
       ...filteredPlugins,
       {
-        name: "react-router-routing-toolkit:user-define",
+        name: "react-router-toolkit:user-define",
         config: () => ({ define: viteOptions?.define }),
       },
       {
         // React Router's `relative()` / `@react-router/fs-routes` read `getAppDirectory()` at
         // evaluation time, so these packages must run as shims inside the SSR module runner.
-        name: "react-router-routing-toolkit:react-router-shims",
+        name: "react-router-toolkit:react-router-shims",
         enforce: "post",
         configEnvironment: (name) => {
           if (name !== "ssr") {

@@ -1,4 +1,4 @@
-import { buildRouteIndex, listRoutes, loadRouteTree, matchUrl } from "react-router-routing-toolkit";
+import { buildRouteIndex, listRoutes, loadRouteTree, matchUrl } from "react-router-toolkit";
 import { describe, expect, it } from "vite-plus/test";
 
 const projectRoot = import.meta.dirname.replace(/\/test$/, "");

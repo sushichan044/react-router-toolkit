@@ -8,7 +8,7 @@
     "@types/node": "catalog:dev",
     "@virtual-live-lab/tsconfig": "catalog:dev",
     "react-router": "catalog:dev",
-    "react-router-routing-toolkit": "workspace:*",
+    "react-router-toolkit": "workspace:*",
     "typescript": "catalog:dev",
     "vite": "catalog:dev",
     "vite-plus": "catalog:dev"

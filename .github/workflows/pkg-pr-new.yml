@@ -23,7 +23,7 @@ permissions:
 
 jobs:
   publish:
-    if: github.repository == 'sushichan044/react-router-routing-toolkit' && (github.ref == 'refs/heads/main' || contains(github.event.pull_request.labels.*.name, 'cr-tracked'))
+    if: github.repository == 'sushichan044/react-router-toolkit' && (github.ref == 'refs/heads/main' || contains(github.event.pull_request.labels.*.name, 'cr-tracked'))
     name: Publish to pkg-pr-new (Publish Preview Package)
     runs-on: ubuntu-24.04
     timeout-minutes: 10

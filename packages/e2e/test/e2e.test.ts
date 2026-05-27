@@ -1,6 +1,6 @@
 import { fileURLToPath } from "node:url";
 
-import { buildRouteIndex, listRoutes, loadRouteTree, matchUrl } from "react-router-routing-toolkit";
+import { buildRouteIndex, listRoutes, loadRouteTree, matchUrl } from "react-router-toolkit";
 import { describe, expect, it } from "vite-plus/test";
 
 describe("loadRouteTree against a real React Router app", () => {

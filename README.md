@@ -1,10 +1,10 @@
-# react-router-routing-toolkit
+# react-router-toolkit
 
 ## Overview
 
 This repository is a monorepo setup for developing TypeScript libraries, specifically tailored for ESLint configuration analysis and rule exploration. It leverages modern tools and practices to ensure efficient development, testing, and publishing workflows.
 
-You can get started with `degit sushichan044/react-router-routing-toolkit` to create your own project based on this template.
+You can get started with `degit sushichan044/react-router-toolkit` to create your own project based on this template.
 
 ## Development Setup
 

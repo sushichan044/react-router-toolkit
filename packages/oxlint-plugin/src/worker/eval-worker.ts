@@ -8,10 +8,10 @@
 // config, whose plugins may print to stdout and corrupt a stdout-based JSON payload.
 //
 // Kept as plain ESM so it does not depend on the build tool's multi-entry support, and resolves
-// `react-router-routing-toolkit` (and its transitive `vite`) from the target project at runtime.
+// `react-router-toolkit` (and its transitive `vite`) from the target project at runtime.
 import { writeFileSync } from "node:fs";
 
-import { buildRouteIndex, loadRouteTree } from "react-router-routing-toolkit";
+import { buildRouteIndex, loadRouteTree } from "react-router-toolkit";
 
 const root = process.argv[2];
 const outFile = process.argv[3];

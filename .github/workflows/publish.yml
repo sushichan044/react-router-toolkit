@@ -19,7 +19,7 @@ permissions:
 jobs:
   release:
     name: Release
-    if: github.repository == 'sushichan044/react-router-routing-toolkit'
+    if: github.repository == 'sushichan044/react-router-toolkit'
     runs-on: ubuntu-24.04
     timeout-minutes: 10
     permissions:

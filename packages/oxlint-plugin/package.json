@@ -1,5 +1,5 @@
 {
-  "name": "@react-router-routing-toolkit/oxlint-plugin",
+  "name": "@react-router-toolkit/oxlint-plugin",
   "version": "0.0.0",
   "private": true,
   "description": "Oxlint / ESLint plugin that verifies route module paths declared in routes.ts point to existing files.",
@@ -12,9 +12,9 @@
     "oxlintplugin",
     "react-router"
   ],
-  "homepage": "https://github.com/sushichan044/react-router-routing-toolkit#readme",
+  "homepage": "https://github.com/sushichan044/react-router-toolkit#readme",
   "bugs": {
-    "url": "https://github.com/sushichan044/react-router-routing-toolkit/issues"
+    "url": "https://github.com/sushichan044/react-router-toolkit/issues"
   },
   "license": "MIT",
   "author": {
@@ -23,7 +23,7 @@
   },
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/sushichan044/react-router-routing-toolkit.git",
+    "url": "git+https://github.com/sushichan044/react-router-toolkit.git",
     "directory": "packages/oxlint-plugin"
   },
   "funding": "https://github.com/sponsors/sushichan044",
@@ -49,7 +49,7 @@
   },
   "dependencies": {
     "@oxlint/plugins": "catalog:prod",
-    "react-router-routing-toolkit": "workspace:*"
+    "react-router-toolkit": "workspace:*"
   },
   "devDependencies": {
     "@arethetypeswrong/core": "catalog:dev",

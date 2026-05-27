@@ -96,9 +96,9 @@ importers:
       react-router:
         specifier: catalog:dev
         version: 7.15.1(react@19.2.6)
-      react-router-routing-toolkit:
+      react-router-toolkit:
         specifier: workspace:*
-        version: link:../react-router-routing-toolkit
+        version: link:../react-router-toolkit
       typescript:
         specifier: catalog:dev
         version: 6.0.3
@@ -123,9 +123,9 @@ importers:
       react-router:
         specifier: catalog:dev
         version: 7.15.1(react@19.2.6)
-      react-router-routing-toolkit:
+      react-router-toolkit:
         specifier: workspace:*
-        version: link:../react-router-routing-toolkit
+        version: link:../react-router-toolkit
       typescript:
         specifier: catalog:dev
         version: 6.0.3
@@ -141,9 +141,9 @@ importers:
       '@oxlint/plugins':
         specifier: catalog:prod
         version: 1.62.0
-      react-router-routing-toolkit:
+      react-router-toolkit:
         specifier: workspace:*
-        version: link:../react-router-routing-toolkit
+        version: link:../react-router-toolkit
     devDependencies:
       '@arethetypeswrong/core':
         specifier: catalog:dev
@@ -188,7 +188,7 @@ importers:
         specifier: catalog:dev
         version: 0.1.22(@arethetypeswrong/core@0.18.2)(@types/node@25.9.1)(esbuild@0.27.7)(publint@0.3.21)(typescript@6.0.3)(unplugin-unused@0.5.7)(vite@8.0.14(@types/node@25.9.1)(esbuild@0.27.7))
 
-  packages/react-router-routing-toolkit:
+  packages/react-router-toolkit:
     devDependencies:
       '@arethetypeswrong/core':
         specifier: catalog:dev

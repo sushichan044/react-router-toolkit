@@ -20,7 +20,7 @@ const evalCache = new Map<string, EvalCacheEntry>();
 
 /**
  * Return the app-relative module paths declared by `<root>/app/routes.ts`, evaluating it through
- * `react-router-routing-toolkit` in a child process so the async evaluator can be consumed from a
+ * `react-router-toolkit` in a child process so the async evaluator can be consumed from a
  * synchronous lint rule. Results are cached per routes file and reused until its mtime changes.
  *
  * The worker writes its JSON result to a temp file rather than stdout: evaluating the project loads

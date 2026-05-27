@@ -1,5 +1,5 @@
 /**
- * Base class for all errors produced by `react-router-routing-toolkit`. Subclassed by
+ * Base class for all errors produced by `react-router-toolkit`. Subclassed by
  * {@link RouteEvaluationError}, {@link RouteManifestError}, and {@link RouteValidationError}; use
  * `instanceof RouteToolkitError` to catch any toolkit-originating failure.
  */

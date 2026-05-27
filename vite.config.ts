@@ -47,10 +47,8 @@ export default defineConfig({
       },
       {
         test: {
-          name: "react-router-routing-toolkit",
-          include: [
-            "packages/react-router-routing-toolkit/**/*.test.{js,mjs,cjs,ts,mts,cts,jsx,tsx}",
-          ],
+          name: "react-router-toolkit",
+          include: ["packages/react-router-toolkit/**/*.test.{js,mjs,cjs,ts,mts,cts,jsx,tsx}"],
         },
       },
       {

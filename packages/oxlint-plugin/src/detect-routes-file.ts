@@ -1,8 +1,8 @@
 import { basename, dirname, resolve as resolvePath } from "node:path";
 
 /**
- * `react-router-routing-toolkit`'s evaluator resolves `<root>/app/routes.ts`, so detection is
- * limited to a file literally named `routes.ts`.
+ * `react-router-toolkit`'s evaluator resolves `<root>/app/routes.ts`, so detection is limited to a
+ * file literally named `routes.ts`.
  */
 const ROUTES_FILE_NAME = "routes.ts";
 
