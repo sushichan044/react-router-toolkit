@@ -20,14 +20,22 @@ export default defineConfig({
     env: {
       node: true,
     },
+    plugins: ["import", "node", "unicorn"],
     rules: {
       "import/consistent-type-specifier-style": "error",
+      "typescript/array-type": ["error", { default: "array-simple" }],
+      "typescript/ban-ts-comment": "error",
       "typescript/consistent-type-assertions": "error",
       "typescript/consistent-type-imports": "error",
       "typescript/no-misused-promises": "error",
-      "typescript/array-type": ["error", { default: "array-simple" }],
+      "typescript/no-explicit-any": "error",
+      "typescript/no-unnecessary-type-assertion": "error",
+      "typescript/no-unnecessary-type-conversion": "error",
+      "typescript/no-unsafe-call": "error",
+      "typescript/non-nullable-type-assertion-style": "error",
+      "node/no-path-concat": "error",
+      "unicorn/custom-error-definition": "error",
     },
-    plugins: ["import"],
   },
   test: {
     benchmark: {
