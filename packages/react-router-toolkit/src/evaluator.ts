@@ -7,10 +7,9 @@ import { RouteEvaluationError, RouteManifestError, RouteValidationError } from "
 import {
   configRoutesToRouteManifest,
   mergeReactRouterConfig,
-  type Preset,
-  type ReactRouterConfig,
   setAppDirectory,
 } from "./react-router-internals";
+import type { Preset, ReactRouterConfig } from "./react-router-internals";
 import type { LoadRoutesOptions, ResolvedRouteManifest } from "./types";
 import { createRouteModuleEvaluator } from "./vite";
 

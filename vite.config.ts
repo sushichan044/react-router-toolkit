@@ -2,14 +2,14 @@ import { defineConfig } from "vite-plus";
 
 export default defineConfig({
   fmt: {
-    ignorePatterns: ["pnpm-*.yaml", "CHANGELOG.md"],
+    ignorePatterns: ["pnpm-lock.yaml", "CHANGELOG.md"],
     jsdoc: true,
     sortImports: true,
   },
   lint: {
     ignorePatterns: ["**/test/fixtures/**"],
     categories: {
-      correctness: "off",
+      correctness: "error",
       nursery: "error",
       perf: "error",
     },
@@ -20,13 +20,14 @@ export default defineConfig({
     env: {
       node: true,
     },
-    jsPlugins: ["vite-plus/oxlint-plugin"],
     rules: {
-      // This library is published with `vite` declared as a peer dependency, so
-      // the build output must import directly from `vite` rather than from the
-      // internal `vite-plus` wrapper.
-      "vite-plus/prefer-vite-plus-imports": "off",
+      "import/consistent-type-specifier-style": "error",
+      "typescript/consistent-type-assertions": "error",
+      "typescript/consistent-type-imports": "error",
+      "typescript/no-misused-promises": "error",
+      "typescript/array-type": ["error", { default: "array-simple" }],
     },
+    plugins: ["import"],
   },
   test: {
     benchmark: {

@@ -1,12 +1,5 @@
-import {
-  createServer,
-  type InlineConfig,
-  isRunnableDevEnvironment,
-  loadConfigFromFile,
-  type Plugin,
-  type PluginOption,
-  type RunnableDevEnvironment,
-} from "vite";
+import { createServer, isRunnableDevEnvironment, loadConfigFromFile } from "vite";
+import type { InlineConfig, Plugin, PluginOption, RunnableDevEnvironment } from "vite";
 
 import { RouteEvaluationError } from "./errors";
 import type { LoadRoutesOptions } from "./types";
