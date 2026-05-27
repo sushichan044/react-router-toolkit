@@ -1,0 +1,11 @@
+{
+  "extends": "@virtual-live-lab/tsconfig/base",
+  "compilerOptions": {
+    "module": "preserve",
+    "moduleResolution": "bundler",
+    "types": ["node", "vite-plus/test/importMeta"],
+    "lib": ["ESNext"],
+    "erasableSyntaxOnly": true
+  },
+  "exclude": ["test/fixtures"]
+}

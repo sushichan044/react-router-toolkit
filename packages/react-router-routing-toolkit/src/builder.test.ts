@@ -1,29 +1,28 @@
-import { resolve } from "node:path";
-import { fileURLToPath } from "node:url";
-
 import { describe, expect, it } from "vite-plus/test";
 
 import { buildRouteTree } from "./builder";
-import type { LayoutRouteNode, RouteConfigEntry } from "./types";
-import { RouteManifestError } from "./types";
+import { RouteManifestError } from "./errors";
+import type { LayoutRouteNode, RouteManifest, RouteManifestEntry } from "./types";
 import { buildRouteIndex } from "./utils";
 
-const FIXTURES_DIR = fileURLToPath(import.meta.resolve("../test/fixtures"));
-
-function appDir(fixture: string): string {
-  return resolve(FIXTURES_DIR, fixture, "app");
+/** Build a {@link RouteManifest} from entries, preserving declaration order (as React Router does). */
+function manifest(...entries: RouteManifestEntry[]): RouteManifest {
+  const result: Record<string, RouteManifestEntry> = {};
+  for (const entry of entries) {
+    result[entry.id] = entry;
+  }
+  return result;
 }
 
-// A scratch appDirectory containing root.tsx, used for tests that don't care about path
-// normalisation specifics.
-const SCRATCH_APP = appDir("minimal");
+/** The synthesized root entry React Router always emits for app/root.tsx. */
+const ROOT: RouteManifestEntry = { id: "root", file: "root.tsx", path: "" };
 
 describe("buildRouteTree", () => {
-  describe("root synthesis", () => {
-    it("places a synthesized root.tsx layout at the top of the tree", () => {
-      const tree = buildRouteTree([{ file: "about.tsx", path: "about" }], {
-        appDirectory: SCRATCH_APP,
-      });
+  describe("root", () => {
+    it("uses the manifest's parentless entry as the synthesized root layout", () => {
+      const tree = buildRouteTree(
+        manifest(ROOT, { id: "about", parentId: "root", file: "about.tsx", path: "about" }),
+      );
       expect(tree.kind).toBe("layout");
       expect(tree.id).toBe("root");
       expect(tree.parentId).toBeUndefined();
@@ -31,13 +30,13 @@ describe("buildRouteTree", () => {
       expect(tree.fullPath).toBe("/");
     });
 
-    it("nests every routes.ts entry under the synthesized root", () => {
+    it("links every top-level entry to the root via parentId", () => {
       const tree = buildRouteTree(
-        [
-          { file: "home.tsx", index: true },
-          { file: "about.tsx", path: "about" },
-        ],
-        { appDirectory: SCRATCH_APP },
+        manifest(
+          ROOT,
+          { id: "home", parentId: "root", file: "home.tsx", index: true },
+          { id: "about", parentId: "root", file: "about.tsx", path: "about" },
+        ),
       );
       const root = tree as LayoutRouteNode;
       expect(root.children).toHaveLength(2);
@@ -46,202 +45,151 @@ describe("buildRouteTree", () => {
       }
     });
 
-    it("throws RouteManifestError when app/root.{ext} cannot be located", () => {
+    it("throws RouteManifestError when no parentless root entry exists", () => {
       expect(() =>
-        buildRouteTree([{ file: "about.tsx", path: "about" }], {
-          appDirectory: "/this/path/does/not/exist",
-        }),
+        buildRouteTree(manifest({ id: "orphan", parentId: "missing", file: "x.tsx", path: "x" })),
       ).toThrow(RouteManifestError);
-    });
-
-    it("throws RouteManifestError when a user route resolves to id 'root'", () => {
-      const entries: RouteConfigEntry[] = [{ file: "anything.tsx", path: "root", id: "root" }];
-      try {
-        buildRouteTree(entries, { appDirectory: SCRATCH_APP });
-        expect.fail("Expected buildRouteTree to throw");
-      } catch (err) {
-        expect(err).toBeInstanceOf(RouteManifestError);
-        expect((err as RouteManifestError).conflictingId).toBe("root");
-      }
     });
   });
 
   describe("kind classification", () => {
-    it("classifies a bare index() entry as an IndexRouteNode with no path", () => {
-      const tree = buildRouteTree([{ file: "home.tsx", index: true }], {
-        appDirectory: SCRATCH_APP,
-      });
+    it("classifies a bare index entry as an IndexRouteNode with no path", () => {
+      const tree = buildRouteTree(
+        manifest(ROOT, { id: "home", parentId: "root", file: "home.tsx", index: true }),
+      );
       const home = buildRouteIndex(tree).get("home");
       expect(home?.kind).toBe("index");
       expect(home?.kind === "index" && home.path).toBeUndefined();
     });
 
-    it("classifies a prefix()-wrapped index() as an IndexRouteNode with the prefix path", () => {
-      const tree = buildRouteTree([{ file: "concerts/home.tsx", index: true, path: "concerts" }], {
-        appDirectory: SCRATCH_APP,
-      });
+    it("classifies a prefix-wrapped index as an IndexRouteNode carrying the prefix path", () => {
+      const tree = buildRouteTree(
+        manifest(ROOT, {
+          id: "concerts/home",
+          parentId: "root",
+          file: "concerts/home.tsx",
+          index: true,
+          path: "concerts",
+        }),
+      );
       const concertsHome = buildRouteIndex(tree).get("concerts/home");
       expect(concertsHome?.kind).toBe("index");
       expect(concertsHome?.kind === "index" && concertsHome.path).toBe("concerts");
       expect(concertsHome?.fullPath).toBe("/concerts");
     });
 
-    it("classifies a pathless wrapper as a LayoutRouteNode", () => {
+    it("classifies a pathless entry with children as a LayoutRouteNode", () => {
       const tree = buildRouteTree(
-        [
-          {
-            file: "auth-layout.tsx",
-            children: [{ file: "login.tsx", path: "login" }],
-          },
-        ],
-        { appDirectory: SCRATCH_APP },
+        manifest(
+          ROOT,
+          { id: "auth-layout", parentId: "root", file: "auth-layout.tsx" },
+          { id: "login", parentId: "auth-layout", file: "login.tsx", path: "login" },
+        ),
       );
-      const layout = buildRouteIndex(tree).get("auth-layout");
-      expect(layout?.kind).toBe("layout");
+      expect(buildRouteIndex(tree).get("auth-layout")?.kind).toBe("layout");
     });
 
-    it("classifies a pathful childless route as a LeafRouteNode", () => {
-      const tree = buildRouteTree([{ file: "about.tsx", path: "about" }], {
-        appDirectory: SCRATCH_APP,
-      });
+    it("classifies a pathful childless entry as a LeafRouteNode", () => {
+      const tree = buildRouteTree(
+        manifest(ROOT, { id: "about", parentId: "root", file: "about.tsx", path: "about" }),
+      );
       const about = buildRouteIndex(tree).get("about");
       expect(about?.kind).toBe("leaf");
       expect(about?.kind === "leaf" && about.path).toBe("about");
     });
 
-    it("classifies a pathful wrapper as a BranchRouteNode", () => {
+    it("classifies a pathful entry with children as a BranchRouteNode", () => {
       const tree = buildRouteTree(
-        [
+        manifest(
+          ROOT,
           {
+            id: "concerts/section",
+            parentId: "root",
             file: "concerts/section.tsx",
             path: "concerts",
-            children: [{ file: "concerts/city.tsx", path: ":city" }],
           },
-        ],
-        { appDirectory: SCRATCH_APP },
+          {
+            id: "concerts/city",
+            parentId: "concerts/section",
+            file: "concerts/city.tsx",
+            path: ":city",
+          },
+        ),
       );
-      const section = buildRouteIndex(tree).get("concerts/section");
-      expect(section?.kind).toBe("branch");
+      expect(buildRouteIndex(tree).get("concerts/section")?.kind).toBe("branch");
     });
 
     it("rejects a structurally empty entry (no path, no index, no children)", () => {
       expect(() =>
-        buildRouteTree([{ file: "useless.tsx" }], { appDirectory: SCRATCH_APP }),
+        buildRouteTree(manifest(ROOT, { id: "useless", parentId: "root", file: "useless.tsx" })),
       ).toThrow(RouteManifestError);
     });
   });
 
-  describe("id resolution", () => {
-    it("uses the explicit id when one is provided", () => {
-      const tree = buildRouteTree([{ file: "about.tsx", path: "about", id: "custom-id" }], {
-        appDirectory: SCRATCH_APP,
-      });
+  describe("identifiers", () => {
+    it("uses the manifest id verbatim", () => {
+      const tree = buildRouteTree(
+        manifest(ROOT, { id: "custom-id", parentId: "root", file: "about.tsx", path: "about" }),
+      );
       expect(buildRouteIndex(tree).has("custom-id")).toBe(true);
     });
 
-    it("derives the id from the file path with the extension stripped", () => {
-      const tree = buildRouteTree([{ file: "routes/about.tsx", path: "about" }], {
-        appDirectory: SCRATCH_APP,
-      });
-      expect(buildRouteIndex(tree).has("routes/about")).toBe(true);
-    });
-
-    it("strips every recognised route module extension", () => {
+    it("preserves an absolute id produced by the relative() helper without rewriting it", () => {
+      const absoluteId = "/Users/me/app/home";
       const tree = buildRouteTree(
-        [
-          { file: "a.ts", path: "a" },
-          { file: "b.tsx", path: "b" },
-          { file: "c.js", path: "c" },
-          { file: "d.jsx", path: "d" },
-          { file: "e.mjs", path: "e" },
-          { file: "f.cjs", path: "f" },
-          { file: "g.mts", path: "g" },
-          { file: "h.cts", path: "h" },
-        ],
-        { appDirectory: SCRATCH_APP },
+        manifest(ROOT, { id: absoluteId, parentId: "root", file: "home.tsx", index: true }),
       );
-      expect([...buildRouteIndex(tree).keys()]).toEqual([
-        "root",
-        "a",
-        "b",
-        "c",
-        "d",
-        "e",
-        "f",
-        "g",
-        "h",
-      ]);
-    });
-
-    it("rejects duplicate ids with a RouteManifestError carrying the offending id", () => {
-      const entries: RouteConfigEntry[] = [
-        { file: "home.tsx", index: true, id: "dup" },
-        { file: "about.tsx", path: "about", id: "dup" },
-      ];
-      try {
-        buildRouteTree(entries, { appDirectory: SCRATCH_APP });
-        expect.fail("Expected buildRouteTree to throw");
-      } catch (err) {
-        expect(err).toBeInstanceOf(RouteManifestError);
-        expect((err as RouteManifestError).conflictingId).toBe("dup");
-      }
+      const index = buildRouteIndex(tree);
+      expect(index.has(absoluteId)).toBe(true);
+      expect(index.get(absoluteId)?.file).toBe("home.tsx");
     });
   });
 
   describe("URL pattern construction", () => {
     it("anchors top-level routes at '/'", () => {
-      const tree = buildRouteTree([{ file: "about.tsx", path: "about" }], {
-        appDirectory: SCRATCH_APP,
-      });
+      const tree = buildRouteTree(
+        manifest(ROOT, { id: "about", parentId: "root", file: "about.tsx", path: "about" }),
+      );
       expect(buildRouteIndex(tree).get("about")?.fullPath).toBe("/about");
     });
 
     it("joins parent path with child path", () => {
       const tree = buildRouteTree(
-        [
+        manifest(
+          ROOT,
           {
+            id: "concerts/layout",
+            parentId: "root",
             file: "concerts/layout.tsx",
             path: "concerts",
-            children: [{ file: "concerts/city.tsx", path: ":city" }],
           },
-        ],
-        { appDirectory: SCRATCH_APP },
+          {
+            id: "concerts/city",
+            parentId: "concerts/layout",
+            file: "concerts/city.tsx",
+            path: ":city",
+          },
+        ),
       );
       expect(buildRouteIndex(tree).get("concerts/city")?.fullPath).toBe("/concerts/:city");
     });
 
-    it("inherits parent fullPath for layout entries", () => {
+    it("inherits the parent fullPath for pathless layout entries", () => {
       const tree = buildRouteTree(
-        [
-          {
-            file: "auth-layout.tsx",
-            children: [{ file: "login.tsx", path: "login" }],
-          },
-        ],
-        { appDirectory: SCRATCH_APP },
+        manifest(
+          ROOT,
+          { id: "auth-layout", parentId: "root", file: "auth-layout.tsx" },
+          { id: "login", parentId: "auth-layout", file: "login.tsx", path: "login" },
+        ),
       );
       expect(buildRouteIndex(tree).get("auth-layout")?.fullPath).toBe("/");
       expect(buildRouteIndex(tree).get("login")?.fullPath).toBe("/login");
     });
 
-    it("inherits parent fullPath for index entries", () => {
+    it("collapses repeated slashes when a path arrives with a leading slash", () => {
       const tree = buildRouteTree(
-        [
-          {
-            file: "concerts/layout.tsx",
-            path: "concerts",
-            children: [{ file: "concerts/home.tsx", index: true }],
-          },
-        ],
-        { appDirectory: SCRATCH_APP },
+        manifest(ROOT, { id: "files", parentId: "root", file: "files.tsx", path: "/files/*" }),
       );
-      expect(buildRouteIndex(tree).get("concerts/home")?.fullPath).toBe("/concerts");
-    });
-
-    it("collapses repeated slashes when paths arrive with leading slashes", () => {
-      const tree = buildRouteTree([{ file: "files.tsx", path: "/files/*" }], {
-        appDirectory: SCRATCH_APP,
-      });
       expect(buildRouteIndex(tree).get("files")?.fullPath).toBe("/files/*");
     });
   });
@@ -249,22 +197,20 @@ describe("buildRouteTree", () => {
   describe("params extraction", () => {
     it("extracts dynamic params from the fullPath", () => {
       const tree = buildRouteTree(
-        [
-          {
-            file: "concerts/section.tsx",
-            path: "concerts",
-            children: [{ file: "concerts/city.tsx", path: ":city" }],
-          },
-        ],
-        { appDirectory: SCRATCH_APP },
+        manifest(ROOT, {
+          id: "concerts/city",
+          parentId: "root",
+          file: "concerts/city.tsx",
+          path: "concerts/:city",
+        }),
       );
       expect(buildRouteIndex(tree).get("concerts/city")?.params).toEqual(["city"]);
     });
 
     it("represents splat segments as '*'", () => {
-      const tree = buildRouteTree([{ file: "files.tsx", path: "files/*" }], {
-        appDirectory: SCRATCH_APP,
-      });
+      const tree = buildRouteTree(
+        manifest(ROOT, { id: "files", parentId: "root", file: "files.tsx", path: "files/*" }),
+      );
       expect(buildRouteIndex(tree).get("files")?.params).toEqual(["*"]);
     });
   });
@@ -272,14 +218,21 @@ describe("buildRouteTree", () => {
   describe("parent-child relationships", () => {
     it("links each child to its parent via parentId", () => {
       const tree = buildRouteTree(
-        [
+        manifest(
+          ROOT,
           {
+            id: "concerts/layout",
+            parentId: "root",
             file: "concerts/layout.tsx",
             path: "concerts",
-            children: [{ file: "concerts/city.tsx", path: ":city" }],
           },
-        ],
-        { appDirectory: SCRATCH_APP },
+          {
+            id: "concerts/city",
+            parentId: "concerts/layout",
+            file: "concerts/city.tsx",
+            path: ":city",
+          },
+        ),
       );
       const index = buildRouteIndex(tree);
       expect(index.get("concerts/city")?.parentId).toBe("concerts/layout");
@@ -288,25 +241,13 @@ describe("buildRouteTree", () => {
 
     it("traverses deeply nested children", () => {
       const tree = buildRouteTree(
-        [
-          {
-            file: "shell.tsx",
-            children: [
-              {
-                file: "section.tsx",
-                path: "section",
-                children: [
-                  {
-                    file: "inner.tsx",
-                    path: ":id",
-                    children: [{ file: "inner-index.tsx", index: true }],
-                  },
-                ],
-              },
-            ],
-          },
-        ],
-        { appDirectory: SCRATCH_APP },
+        manifest(
+          ROOT,
+          { id: "shell", parentId: "root", file: "shell.tsx" },
+          { id: "section", parentId: "shell", file: "section.tsx", path: "section" },
+          { id: "inner", parentId: "section", file: "inner.tsx", path: ":id" },
+          { id: "inner-index", parentId: "inner", file: "inner-index.tsx", index: true },
+        ),
       );
       const index = buildRouteIndex(tree);
       expect(index.size).toBe(5); // root + 4 entries
@@ -314,54 +255,37 @@ describe("buildRouteTree", () => {
       expect(index.get("inner-index")?.fullPath).toBe("/section/:id");
     });
 
-    it("preserves depth-first insertion order with the root first", () => {
+    it("preserves manifest insertion order among siblings, with the root first", () => {
       const tree = buildRouteTree(
-        [
-          {
-            file: "shell.tsx",
-            children: [
-              { file: "first.tsx", path: "first" },
-              { file: "second.tsx", path: "second" },
-            ],
-          },
-        ],
-        { appDirectory: SCRATCH_APP },
+        manifest(
+          ROOT,
+          { id: "shell", parentId: "root", file: "shell.tsx" },
+          { id: "first", parentId: "shell", file: "first.tsx", path: "first" },
+          { id: "second", parentId: "shell", file: "second.tsx", path: "second" },
+        ),
       );
       expect([...buildRouteIndex(tree).keys()]).toEqual(["root", "shell", "first", "second"]);
     });
   });
 
-  describe("appDirectory normalisation", () => {
-    it("rewrites absolute file paths to app-directory-relative POSIX paths", () => {
-      const absolute = resolve(SCRATCH_APP, "about.tsx");
-      const tree = buildRouteTree([{ file: absolute, path: "about" }], {
-        appDirectory: SCRATCH_APP,
-      });
-      const about = buildRouteIndex(tree).get("about");
-      expect(about?.file).toBe("about.tsx");
-    });
-
-    it("leaves already-relative file paths untouched", () => {
-      const tree = buildRouteTree([{ file: "routes/about.tsx", path: "about" }], {
-        appDirectory: SCRATCH_APP,
-      });
-      const about = buildRouteIndex(tree).get("routes/about");
-      expect(about?.file).toBe("routes/about.tsx");
-    });
-  });
-
   describe("caseSensitive flag", () => {
     it("propagates caseSensitive=true to the node", () => {
-      const tree = buildRouteTree([{ file: "about.tsx", path: "about", caseSensitive: true }], {
-        appDirectory: SCRATCH_APP,
-      });
+      const tree = buildRouteTree(
+        manifest(ROOT, {
+          id: "about",
+          parentId: "root",
+          file: "about.tsx",
+          path: "about",
+          caseSensitive: true,
+        }),
+      );
       expect(buildRouteIndex(tree).get("about")?.caseSensitive).toBe(true);
     });
 
     it("defaults caseSensitive to false when omitted", () => {
-      const tree = buildRouteTree([{ file: "about.tsx", path: "about" }], {
-        appDirectory: SCRATCH_APP,
-      });
+      const tree = buildRouteTree(
+        manifest(ROOT, { id: "about", parentId: "root", file: "about.tsx", path: "about" }),
+      );
       expect(buildRouteIndex(tree).get("about")?.caseSensitive).toBe(false);
     });
   });

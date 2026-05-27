@@ -1,21 +1,32 @@
+import type { RouteConfigEntry } from "@react-router/dev/routes";
 import { UserConfig } from "vite";
 
+export type { RouteConfigEntry };
+
 /**
- * A single route entry as returned by React Router's `route()`, `index()`, `layout()`, and
- * `prefix()` helpers from `@react-router/dev/routes`.
+ * A single entry of React Router's resolved route manifest (`id` → entry).
  *
- * Defined structurally instead of importing from `@react-router/dev` because that package's
- * `RouteConfigEntry` type is part of an internal module surface and not covered by the package's
- * public type stability guarantees. The runtime shape matches what those helpers actually return.
+ * This mirrors React Router's internal `RouteManifestEntry`, which is **not** part of
+ * `@react-router/dev`'s public type exports. Every field here is already fully resolved by React
+ * Router's own config loader:
+ *
+ * - `file` is an `appDirectory`-relative POSIX path.
+ * - `path` has `prefix()` segments merged in (e.g. `concerts/:city`).
+ * - `id` is React Router's own identifier (`route.id` when given, otherwise derived from `file` —
+ *   which means it can be an absolute path when the `relative()` helper is used).
+ * - `parentId` references another entry's `id`; only the synthesized `root` entry omits it.
  */
-export interface RouteConfigEntry {
-  readonly id?: string;
+export interface RouteManifestEntry {
+  readonly id: string;
+  readonly parentId?: string;
+  readonly file: string;
   readonly path?: string;
   readonly index?: boolean;
   readonly caseSensitive?: boolean;
-  readonly file: string;
-  readonly children?: readonly RouteConfigEntry[];
 }
+
+/** React Router's flat route manifest, keyed by route `id`. */
+export type RouteManifest = Readonly<Record<string, RouteManifestEntry>>;
 
 interface RouteNodeBase {
   readonly id: string;
@@ -135,76 +146,20 @@ export interface UrlMatch {
   readonly params: Readonly<Record<string, string | undefined>>;
 }
 
-/**
- * Options accepted by `loadRouteTree` and `evaluateRoutesFile`.
- *
- * The user project must have a `vite.config.ts` registering the React Router Vite plugin
- * (`@react-router/dev/vite`); the toolkit relies on that plugin to configure
- * `globalThis.__reactRouterAppDirectory` before `routes.ts` is evaluated. The routes file is always
- * resolved to `${root}/app/routes.ts` — customising the filename is intentionally not supported.
- */
 export interface LoadRoutesOptions {
-  /**
-   * Vite settings used when evaluating `app/routes.ts`. Use `define` with a dedicated `import.meta`
-   * or `import.meta.env` property when the route configuration must vary per evaluation; the
-   * evaluator does not inject or override `process.env`.
-   */
-  readonly vite?: Pick<UserConfig, "define" | "root">;
-}
-
-type RouteToolkitErrorKind = "evaluation" | "manifest" | "validation";
-
-/**
- * Base class for all errors produced by `react-router-routing-toolkit`. Subclassed by
- * {@link RouteEvaluationError}, {@link RouteManifestError}, and {@link RouteValidationError}; use
- * `instanceof RouteToolkitError` to catch any toolkit-originating failure.
- */
-export class RouteToolkitError extends Error {
-  readonly kind: RouteToolkitErrorKind;
-
-  constructor(message: string, options: { kind: RouteToolkitErrorKind; cause?: unknown }) {
-    super(message, options.cause !== undefined ? { cause: options.cause } : undefined);
-    this.kind = options.kind;
-    this.name = "RouteToolkitError";
-  }
-}
-
-/** Thrown when `app/routes.ts` cannot be loaded or evaluated. */
-export class RouteEvaluationError extends RouteToolkitError {
-  override readonly kind: "evaluation";
-  readonly file: string;
-
-  constructor(message: string, options: { file: string; cause?: unknown }) {
-    super(message, { kind: "evaluation", cause: options.cause });
-    this.kind = "evaluation";
-    this.file = options.file;
-    this.name = "RouteEvaluationError";
-  }
+  /** @default `process.cwd()` (project root, expected to contain `vite.config.*` and `app/`) */
+  readonly root?: string;
+  readonly vite?: Pick<UserConfig, "define">;
 }
 
 /**
- * Thrown when assembling the route tree fails — duplicate ids, conflict with the synthesized
- * `"root"` id, or `app/root.tsx` not present on disk.
+ * React Router's resolved routing config, as captured from the `reactRouter()` Vite plugin.
+ *
+ * Returned by `resolveRouteManifest`.
  */
-export class RouteManifestError extends RouteToolkitError {
-  override readonly kind: "manifest";
-  readonly conflictingId: string | undefined;
-
-  constructor(message: string, options?: { conflictingId?: string; cause?: unknown }) {
-    super(message, { kind: "manifest", cause: options?.cause });
-    this.kind = "manifest";
-    this.conflictingId = options?.conflictingId;
-    this.name = "RouteManifestError";
-  }
-}
-
-/** Thrown when the evaluated module's default export is not a valid route config. */
-export class RouteValidationError extends RouteToolkitError {
-  override readonly kind: "validation";
-
-  constructor(message: string, options?: { cause?: unknown }) {
-    super(message, { kind: "validation", cause: options?.cause });
-    this.kind = "validation";
-    this.name = "RouteValidationError";
-  }
+export interface ResolvedRouteManifest {
+  /** Absolute path of the application directory (React Router's resolved `appDirectory`). */
+  readonly appDirectory: string;
+  /** React Router's flat route manifest. */
+  readonly routes: RouteManifest;
 }

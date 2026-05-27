@@ -1,37 +1,30 @@
-import { resolve as resolvePath } from "node:path";
-
 import { buildRouteTree } from "./builder";
-import { evaluateRoutesFile } from "./evaluator";
+import { resolveRouteManifest } from "./evaluator";
 import type { LoadRoutesOptions, RouteTree } from "./types";
 
 /**
- * Load and evaluate the user project's `app/routes.ts` with Vite's ModuleRunner, then assemble the
- * result into a {@link RouteTree} rooted at the synthesized `app/root.tsx` layout.
+ * Resolve the user project's routes through its `reactRouter()` Vite plugin and assemble React
+ * Router's route manifest into a {@link RouteTree} rooted at the synthesized `app/root.tsx`
+ * layout.
  *
- * This is the high-level convenience wrapper around {@link evaluateRoutesFile} +
+ * This is the high-level convenience wrapper around {@link resolveRouteManifest} +
  * {@link buildRouteTree}.
  */
 export async function loadRouteTree(options?: LoadRoutesOptions): Promise<RouteTree> {
-  const root = options?.vite?.root ?? process.cwd();
-  const entries = await evaluateRoutesFile(options);
-  return buildRouteTree(entries, { appDirectory: resolvePath(root, "app") });
+  const { routes } = await resolveRouteManifest(options);
+  return buildRouteTree(routes);
 }
 
 export type {
-  BranchRouteNode,
-  IndexRouteNode,
-  LayoutRouteNode,
-  LeafRouteNode,
   LoadRoutesOptions,
-  PathfulRouteNode,
-  PathlessRouteNode,
+  ResolvedRouteManifest,
   RouteConfigEntry,
   RouteIndex,
+  RouteManifest,
+  RouteManifestEntry,
   RouteNode,
   RouteTree,
-  TerminalRouteNode,
   UrlMatch,
-  WrapperRouteNode,
 } from "./types";
 
 export {
@@ -39,22 +32,11 @@ export {
   RouteManifestError,
   RouteToolkitError,
   RouteValidationError,
-} from "./types";
+} from "./errors";
 
-export { evaluateRoutesFile } from "./evaluator";
+export { resolveRouteManifest } from "./evaluator";
 
 export { buildRouteTree } from "./builder";
-export type { BuildRouteTreeOptions } from "./builder";
 
-export {
-  buildRouteIndex,
-  findByFile,
-  getRenderChain,
-  getRouteById,
-  isPathful,
-  isPathless,
-  isTerminal,
-  isWrapper,
-  listRoutes,
-  matchUrl,
-} from "./utils";
+export { buildRouteIndex, listRoutes, matchUrl } from "./utils";
+export type { ListRoutesOptions } from "./utils";

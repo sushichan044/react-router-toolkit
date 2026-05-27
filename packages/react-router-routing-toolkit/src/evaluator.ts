@@ -1,155 +1,163 @@
-import assert from "node:assert/strict";
-import { resolve as resolvePath } from "node:path";
+import { existsSync } from "node:fs";
+import { relative as relativePath, resolve as resolvePath } from "node:path";
 
-import { createServer, isRunnableDevEnvironment, ViteDevServer } from "vite";
+import type { RouteConfigEntry } from "@react-router/dev/routes";
 
-import type { LoadRoutesOptions, RouteConfigEntry } from "./types";
-import { RouteEvaluationError, RouteToolkitError, RouteValidationError } from "./types";
+import { RouteEvaluationError, RouteManifestError, RouteValidationError } from "./errors";
+import {
+  configRoutesToRouteManifest,
+  mergeReactRouterConfig,
+  type Preset,
+  type ReactRouterConfig,
+  setAppDirectory,
+} from "./react-router-internals";
+import type { LoadRoutesOptions, ResolvedRouteManifest } from "./types";
+import { createRouteModuleEvaluator } from "./vite";
 
-function isRouteConfigEntry(value: unknown): value is RouteConfigEntry {
-  if (typeof value !== "object" || value === null) {
-    return false;
-  }
-  const file = (value as Record<string, unknown>)["file"];
-  return typeof file === "string";
-}
+const MODULE_EXTENSIONS = [".ts", ".tsx", ".js", ".jsx", ".mts", ".cts", ".mjs", ".cjs"] as const;
 
-function isRouteConfigEntryArray(value: unknown): value is RouteConfigEntry[] {
-  return Array.isArray(value) && value.every(isRouteConfigEntry);
-}
+const REACT_ROUTER_CONFIG_BASENAME = "react-router.config";
+const ROUTES_BASENAME = "routes";
+const ROOT_BASENAME = "root";
 
 /**
- * Evaluate the user project's `app/routes.ts` using Vite's
- * {@link https://vite.dev/guide/api-environment-runtimes.html ModuleRunner}.
+ * Resolve a React Router project's routing config the way React Router itself does, then return its
+ * fully-resolved {@link ResolvedRouteManifest.routes route manifest} (plus the resolved
+ * `appDirectory`).
  *
- * - The user's `vite.config.ts` is loaded with Vite's default search rooted at `root`, so the React
- *   Router Vite plugin and any path aliases match what the production build sees.
- * - `globalThis.__reactRouterAppDirectory` is published by the React Router Vite plugin
- *   (`@react-router/dev/vite`), which the user project must register.
- * - To select an environment-dependent route config, pass a dedicated `import.meta` or
- *   `import.meta.env` property through `options.vite.define`; `process.env` is not injected.
- * - The dev server is disposed automatically through `await using`.
+ * The user's `routes.ts` and optional `react-router.config.*` are evaluated through the user's own
+ * Vite config (so aliases resolve), and the resulting route config is shaped into a manifest using
+ * React Router's own algorithm (see `react-router-internals`). Because evaluation only runs
+ * `routes.ts` and its imports — never the referenced route modules — a `routes.ts` may reference
+ * route files that do not exist yet, which is what static analysis tools need.
  *
- * @throws {RouteEvaluationError} When Vite cannot load or execute the file.
- * @throws {RouteValidationError} When the default export is not an array of
- *   `RouteConfigEntry`-shaped objects.
+ * @throws {RouteEvaluationError} When `routes.ts` is missing or cannot be evaluated.
+ * @throws {RouteValidationError} When the `routes.ts` default export is not a route config array.
+ * @throws {RouteManifestError} When the `root` route module is absent or two routes share an id.
  */
-export async function evaluateRoutesFile(
+export async function resolveRouteManifest(
   options: LoadRoutesOptions = {},
-): Promise<readonly RouteConfigEntry[]> {
-  await using server = await createDisposableServer({
-    root: options.vite?.root,
-    server: {
-      hmr: false,
-    },
-    environments: {
-      ssr: {
-        optimizeDeps: {
-          include: ["@react-router/dev/routes", "@react-router/fs-routes"],
-          noDiscovery: true,
-        },
-        resolve: {
-          noExternal: ["@react-router/dev", "@react-router/fs-routes"],
-        },
-      },
-    },
-    plugins: [
-      {
-        name: "react-router-routing-toolkit:shim",
-        config: (userConfig) => {
-          if (import.meta.vitest && !import.meta.e2e) {
-            return;
-          }
-          if (!userConfig.root) {
-            throw new RouteToolkitError(
-              "Specify `root` of vite config to continue evaluating with testing shim.",
-              { kind: "evaluation" },
-            );
-          }
+): Promise<ResolvedRouteManifest> {
+  const { root = process.cwd() } = options;
 
-          const _appDir = resolvePath(userConfig.root, "app");
-          return {
-            define: {
-              // inject shims for test fixtures
-              "globalThis.__reactRouterAppDirectory": JSON.stringify(_appDir),
-            },
-          };
-        },
-      },
-      {
-        name: "react-router-routing-toolkit:user-config",
-        config: () => {
-          return {
-            define: options.vite?.define,
-          };
-        },
-      },
-    ],
-    logLevel: "silent",
-  });
+  await using evaluator = await createRouteModuleEvaluator(root, options.vite);
 
-  const appDir = resolvePath(server.config.root, "app");
-  const routesFile = resolvePath(appDir, "routes.ts");
+  const userConfig = await loadReactRouterUserConfig(root, (file) => evaluator.evaluate(file));
+  const appDirectory = resolvePath(root, userConfig.appDirectory || "app");
 
-  const ssrEnv = server.environments["ssr"];
-  if (!isRunnableDevEnvironment(ssrEnv)) {
+  const routesFile = findEntry(appDirectory, ROUTES_BASENAME);
+  if (routesFile === undefined) {
     throw new RouteEvaluationError(
-      "Vite's SSR environment is not runnable. " +
-        "Ensure your Vite version is 7 or 8 with the default SSR environment enabled.",
-      { file: routesFile },
+      `Could not find a route config file ("${ROUTES_BASENAME}.ts") in "${appDirectory}".`,
+      { file: appDirectory },
     );
   }
 
-  let mod: Record<string, unknown>;
+  const rootFile = findEntry(appDirectory, ROOT_BASENAME);
+  if (rootFile === undefined) {
+    throw new RouteManifestError(
+      `Could not find a root route module ("${ROOT_BASENAME}.{tsx,jsx,ts,js,...}") in "${appDirectory}". ` +
+        "React Router framework mode requires app/root.tsx.",
+    );
+  }
+
+  // React Router publishes the app directory before evaluating routes.ts so that `relative()` and
+  // `@react-router/fs-routes` resolve against it.
+  setAppDirectory(appDirectory);
+  const userRoutes = await evaluateRouteConfig(routesFile, (file) => evaluator.evaluate(file));
+
+  // Nest the user's route config under the resolved root route, mirroring React Router.
+  const nestedRouteConfig: RouteConfigEntry[] = [
+    {
+      id: "root",
+      path: "",
+      file: relativePath(appDirectory, rootFile),
+      children: userRoutes,
+    },
+  ];
+
   try {
-    mod = await ssrEnv.runner.import(routesFile);
+    const routes = configRoutesToRouteManifest(appDirectory, nestedRouteConfig);
+    return { appDirectory, routes };
   } catch (cause) {
     const detail = cause instanceof Error ? cause.message : String(cause);
-    throw new RouteEvaluationError(`Failed to evaluate "${routesFile}": ${detail}`, {
-      file: routesFile,
-      cause,
-    });
+    throw new RouteManifestError(`Invalid route config: ${detail}`, { cause });
+  }
+}
+
+async function loadReactRouterUserConfig(
+  root: string,
+  evaluate: (file: string) => Promise<Record<string, unknown>>,
+): Promise<ReactRouterConfig> {
+  const configFile = findEntry(root, REACT_ROUTER_CONFIG_BASENAME);
+  if (configFile === undefined) {
+    return {};
   }
 
-  const defaultExport = getDefaultExport(mod);
-  if (!defaultExport.success) {
-    throw new RouteValidationError(`"${routesFile}" does not have a default export.`);
+  const mod = await evaluate(configFile);
+  const userConfig = mod["default"];
+  if (typeof userConfig !== "object" || userConfig === null) {
+    throw new RouteValidationError(`"${configFile}" must provide a default export config object.`);
   }
 
-  // normalize sync or async default export
-  const resolved = await Promise.resolve(defaultExport.value);
+  const presetConfigs = await resolvePresetConfigs(userConfig as ReactRouterConfig);
+  return mergeReactRouterConfig(...presetConfigs, userConfig as ReactRouterConfig);
+}
+
+async function resolvePresetConfigs(userConfig: ReactRouterConfig): Promise<ReactRouterConfig[]> {
+  const presets: readonly Preset[] = userConfig.presets ?? [];
+  const resolved = await Promise.all(
+    presets.map(async (preset) => {
+      if (!preset.reactRouterConfig) {
+        return null;
+      }
+      const { presets: _ignored, ...config } = await preset.reactRouterConfig({
+        reactRouterUserConfig: userConfig,
+      });
+      return config as ReactRouterConfig;
+    }),
+  );
+  return resolved.filter((config): config is ReactRouterConfig => config !== null);
+}
+
+async function evaluateRouteConfig(
+  routesFile: string,
+  evaluate: (file: string) => Promise<Record<string, unknown>>,
+): Promise<RouteConfigEntry[]> {
+  const mod = await evaluate(routesFile);
+  if (!("default" in mod)) {
+    throw new RouteValidationError(`"${routesFile}" must provide a default export.`);
+  }
+
+  // The default export may be a route config array or a promise resolving to one.
+  const resolved = await Promise.resolve(mod["default"]);
   if (!isRouteConfigEntryArray(resolved)) {
     throw new RouteValidationError(
-      `The default export of "${routesFile}" is not a RouteConfigEntry[].`,
+      `The default export of "${routesFile}" must be an array of route config entries.`,
     );
   }
-
   return resolved;
 }
 
-async function createDisposableServer(
-  ...args: Parameters<typeof createServer>
-): Promise<AsyncDisposable & ViteDevServer> {
-  const server = await createServer(...args);
-  // Inject `define`-based shims into react-router packages.
-  await server.environments["ssr"].depsOptimizer?.init();
-
-  return Object.assign(server, {
-    [Symbol.asyncDispose]: async () => {
-      await server.close();
-    },
-  });
+function isRouteConfigEntryArray(value: unknown): value is RouteConfigEntry[] {
+  return (
+    Array.isArray(value) &&
+    value.every(
+      (entry) =>
+        typeof entry === "object" &&
+        entry !== null &&
+        typeof (entry as { file?: unknown }).file === "string",
+    )
+  );
 }
 
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === "object" && value !== null;
-}
-
-function getDefaultExport(
-  mod: Record<string, unknown>,
-): { success: true; value: unknown } | { success: false } {
-  if (!isRecord(mod) || !("default" in mod)) {
-    return { success: false };
+/** Locate `<basename>.<ext>` for the first supported module extension, returning an absolute path. */
+function findEntry(directory: string, basename: string): string | undefined {
+  for (const ext of MODULE_EXTENSIONS) {
+    const candidate = resolvePath(directory, `${basename}${ext}`);
+    if (existsSync(candidate)) {
+      return candidate;
+    }
   }
-  return { success: true, value: mod["default"] };
+  return undefined;
 }

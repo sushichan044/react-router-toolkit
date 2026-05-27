@@ -1,11 +1,8 @@
-import { resolve } from "node:path";
-import { fileURLToPath } from "node:url";
-
 import { assert, describe, expect, it } from "vite-plus/test";
 
 import { buildRouteTree } from "./builder";
-import type { RouteConfigEntry } from "./types";
-import { RouteManifestError } from "./types";
+import { RouteManifestError } from "./errors";
+import type { RouteManifest, RouteManifestEntry } from "./types";
 import {
   buildRouteIndex,
   findByFile,
@@ -19,31 +16,29 @@ import {
   matchUrl,
 } from "./utils";
 
-const FIXTURES_DIR = fileURLToPath(import.meta.resolve("../test/fixtures"));
-const SCRATCH_APP = resolve(FIXTURES_DIR, "minimal", "app");
+/** Build a {@link RouteManifest} from entries, preserving declaration order (as React Router does). */
+function manifest(...entries: RouteManifestEntry[]): RouteManifest {
+  const result: Record<string, RouteManifestEntry> = {};
+  for (const entry of entries) {
+    result[entry.id] = entry;
+  }
+  return result;
+}
 
-const sampleEntries: readonly RouteConfigEntry[] = [
-  { file: "routes/home.tsx", index: true },
-  { file: "routes/about.tsx", path: "about" },
-  {
-    file: "auth-layout.tsx",
-    children: [
-      { file: "routes/login.tsx", path: "login" },
-      { file: "routes/register.tsx", path: "register" },
-    ],
-  },
-  {
-    file: "concerts/section.tsx",
-    path: "concerts",
-    children: [
-      { file: "concerts/home.tsx", index: true },
-      { file: "concerts/city.tsx", path: ":city" },
-    ],
-  },
-  { file: "files.tsx", path: "files/*" },
-];
+const sampleManifest = manifest(
+  { id: "root", file: "root.tsx", path: "" },
+  { id: "routes/home", parentId: "root", file: "routes/home.tsx", index: true },
+  { id: "routes/about", parentId: "root", file: "routes/about.tsx", path: "about" },
+  { id: "auth-layout", parentId: "root", file: "auth-layout.tsx" },
+  { id: "routes/login", parentId: "auth-layout", file: "routes/login.tsx", path: "login" },
+  { id: "routes/register", parentId: "auth-layout", file: "routes/register.tsx", path: "register" },
+  { id: "concerts/section", parentId: "root", file: "concerts/section.tsx", path: "concerts" },
+  { id: "concerts/home", parentId: "concerts/section", file: "concerts/home.tsx", index: true },
+  { id: "concerts/city", parentId: "concerts/section", file: "concerts/city.tsx", path: ":city" },
+  { id: "files", parentId: "root", file: "files.tsx", path: "files/*" },
+);
 
-const sampleTree = buildRouteTree(sampleEntries, { appDirectory: SCRATCH_APP });
+const sampleTree = buildRouteTree(sampleManifest);
 const sampleIndex = buildRouteIndex(sampleTree);
 
 describe("buildRouteIndex", () => {
@@ -232,9 +227,18 @@ describe("type guards", () => {
   });
 
   it("treats prefix-derived index as pathful", () => {
-    const tree = buildRouteTree([{ file: "concerts/home.tsx", index: true, path: "concerts" }], {
-      appDirectory: SCRATCH_APP,
-    });
+    const tree = buildRouteTree(
+      manifest(
+        { id: "root", file: "root.tsx", path: "" },
+        {
+          id: "concerts/home",
+          parentId: "root",
+          file: "concerts/home.tsx",
+          index: true,
+          path: "concerts",
+        },
+      ),
+    );
     const index = buildRouteIndex(tree);
     const node = getRouteById(index, "concerts/home");
     expect(isPathful(node)).toBe(true);

@@ -53,6 +53,12 @@ export default defineConfig({
           ],
         },
       },
+      {
+        test: {
+          name: "oxlint-plugin",
+          include: ["packages/oxlint-plugin/**/*.test.{js,mjs,cjs,ts,mts,cts,jsx,tsx}"],
+        },
+      },
     ],
     typecheck: {
       enabled: true,

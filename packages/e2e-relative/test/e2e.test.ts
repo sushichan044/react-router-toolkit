@@ -1,17 +1,11 @@
-import {
-  buildRouteIndex,
-  getRenderChain,
-  listRoutes,
-  loadRouteTree,
-  matchUrl,
-} from "react-router-routing-toolkit";
+import { buildRouteIndex, listRoutes, loadRouteTree, matchUrl } from "react-router-routing-toolkit";
 import { describe, expect, it } from "vite-plus/test";
 
 const projectRoot = import.meta.dirname.replace(/\/test$/, "");
 
 describe("loadRouteTree against a real React Router app using relative() helpers", () => {
   it("evaluates routes.ts and rewrites absolute file paths to app-relative", async () => {
-    const tree = await loadRouteTree({ vite: { root: projectRoot } });
+    const tree = await loadRouteTree({ root: projectRoot });
 
     const files = [...buildRouteIndex(tree).values()].map((node) => node.file);
     expect(files).toContain("root.tsx");
@@ -24,17 +18,16 @@ describe("loadRouteTree against a real React Router app using relative() helpers
   });
 
   it("renderChain begins at the synthesized root layout", async () => {
-    const tree = await loadRouteTree({ vite: { root: projectRoot } });
-    const index = buildRouteIndex(tree);
+    const tree = await loadRouteTree({ root: projectRoot });
 
     const login = listRoutes(tree).find((leaf) => leaf.file === "login.tsx");
     expect(login).toBeDefined();
-    const chain = getRenderChain(index, login!.id);
+    const chain = matchUrl(tree, login!.fullPath)!.renderChain;
     expect(chain.map((c) => c.file)).toEqual(["root.tsx", "auth-layout.tsx", "login.tsx"]);
   });
 
   it("matches URLs against the tree", async () => {
-    const tree = await loadRouteTree({ vite: { root: projectRoot } });
+    const tree = await loadRouteTree({ root: projectRoot });
 
     const cityMatch = matchUrl(tree, "/concerts/tokyo");
     expect(cityMatch?.terminal.file).toBe("concerts/city.tsx");

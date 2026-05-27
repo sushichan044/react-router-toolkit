@@ -3,6 +3,7 @@ import { posix as posixPath } from "node:path";
 import type { RouteObject } from "react-router";
 import { matchRoutes } from "react-router";
 
+import { RouteManifestError } from "./errors";
 import type {
   PathfulRouteNode,
   PathlessRouteNode,
@@ -13,16 +14,57 @@ import type {
   UrlMatch,
   WrapperRouteNode,
 } from "./types";
-import { RouteManifestError } from "./types";
 
-/** Walk a node depth-first, yielding each descendant in pre-order (parent before children). */
-function* walk(node: RouteNode): Generator<RouteNode> {
+/**
+ * Walk a node depth-first, yielding each descendant in pre-order (parent before children).
+ *
+ * Starting from a {@link RouteTree}, the synthesized root is yielded first.
+ */
+export function* walkRoutes(node: RouteNode): Generator<RouteNode> {
   yield node;
   if (node.kind === "layout" || node.kind === "branch") {
     for (const child of node.children) {
-      yield* walk(child);
+      yield* walkRoutes(child);
     }
   }
+}
+
+/**
+ * Whether `node` is the synthesized tree root (`app/root.tsx`) rather than a route declared in
+ * `routes.ts`.
+ */
+export function isRouteTreeRoot(node: RouteNode): boolean {
+  return node.parentId === undefined;
+}
+
+/** Options shared by the tree-listing helpers. */
+export interface ListRoutesOptions {
+  /** Include the synthesized root (`app/root.tsx`) node. Defaults to `true`. */
+  readonly includeRoot?: boolean;
+}
+
+/**
+ * Every node in the tree in depth-first pre-order, including wrappers (`layout`/`branch`).
+ *
+ * Set `includeRoot: false` to drop the synthesized root, leaving only routes declared in
+ * `routes.ts`.
+ */
+export function listAllNodes(tree: RouteTree, options?: ListRoutesOptions): readonly RouteNode[] {
+  const nodes = [...walkRoutes(tree)];
+  if (options?.includeRoot === false) {
+    return nodes.filter((node) => node !== tree);
+  }
+  return nodes;
+}
+
+/**
+ * The `file` of every node (app-relative POSIX), deduplicated. This is the set of module paths the
+ * route config points at — the typical input for file-existence checks, codegen, or watching.
+ *
+ * Set `includeRoot: false` to exclude the synthesized `app/root.tsx`.
+ */
+export function listRouteFiles(tree: RouteTree, options?: ListRoutesOptions): readonly string[] {
+  return [...new Set(listAllNodes(tree, options).map((node) => node.file))];
 }
 
 /**
@@ -33,7 +75,7 @@ function* walk(node: RouteNode): Generator<RouteNode> {
  */
 export function buildRouteIndex(tree: RouteTree): RouteIndex {
   const map = new Map<string, RouteNode>();
-  for (const node of walk(tree)) {
+  for (const node of walkRoutes(tree)) {
     map.set(node.id, node);
   }
   return map;
@@ -97,7 +139,7 @@ export function getRenderChain(index: RouteIndex, id: string): readonly RouteNod
  */
 export function listRoutes(tree: RouteTree): readonly TerminalRouteNode[] {
   const results: TerminalRouteNode[] = [];
-  for (const node of walk(tree)) {
+  for (const node of walkRoutes(tree)) {
     if (isTerminal(node)) {
       results.push(node);
     }

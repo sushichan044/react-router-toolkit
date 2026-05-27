@@ -32,10 +32,13 @@ pnpm add -D react-router-routing-toolkit
 }
 ```
 
-The `routes.ts` file is always resolved at `${root}/app/routes.ts`, and
-`app/root.tsx` (or another supported extension) is required — React Router's
-own framework mode enforces the same convention. Customising these locations
-is not supported.
+The application directory is resolved the way React Router does — from
+`react-router.config.{ts,js,...}` (`appDirectory`, including any `presets`),
+defaulting to `${root}/app`. A `routes.ts` and a `root.tsx` (or another
+supported extension) must exist in that directory; React Router's framework
+mode enforces the same convention. The route module files those entries point
+at need **not** exist, so a `routes.ts` referencing not-yet-created files still
+resolves — which is what static-analysis tooling needs.
 
 ## Quick start
 
@@ -48,7 +51,7 @@ import {
   matchUrl,
 } from "react-router-routing-toolkit";
 
-const tree = await loadRouteTree({ vite: { root: process.cwd() } });
+const tree = await loadRouteTree({ root: process.cwd() });
 
 // Walk the tree directly (children are nested).
 console.log(tree.kind, tree.id); // "layout", "root"
@@ -130,11 +133,14 @@ Throws `RouteEvaluationError`, `RouteValidationError`, or
 
 ### Low-level
 
-#### `evaluateRoutesFile(options?): Promise<readonly RouteConfigEntry[]>`
+#### `resolveRouteManifest(options?): Promise<ResolvedRouteManifest>`
 
-Spin up a Vite dev server, run `app/routes.ts` through the SSR ModuleRunner,
-and return the array its default export resolves to. The server is disposed
-automatically through `await using`.
+Resolve the project's React Router config and return `{ appDirectory, routes }`,
+where `routes` is React Router's own flat `RouteManifest` (id → entry).
+`app/routes.ts` (and any `react-router.config.*`) is evaluated through the
+user's Vite config via the SSR ModuleRunner, then shaped into the manifest with
+React Router's own algorithm. The dev server is disposed automatically through
+`await using`.
 
 #### Conditional route configuration
 
@@ -165,8 +171,8 @@ export default import.meta.routingToolkitUseFsRoutes
 
 ```ts
 const tree = await loadRouteTree({
+  root: process.cwd(),
   vite: {
-    root: process.cwd(),
     define: {
       "import.meta.routingToolkitUseFsRoutes": "true",
     },
@@ -179,11 +185,12 @@ The same pattern can define a dedicated `import.meta.env` member, for example
 dedicated switch over exposing arbitrary environment variables to route
 evaluation.
 
-#### `buildRouteTree(entries, options): RouteTree`
+#### `buildRouteTree(manifest): RouteTree`
 
-Depth-first traversal of the `RouteConfigEntry[]` tree. Synthesizes
-`app/root.tsx` (resolved through `options.appDirectory`) as the single
-top-level layout, with every input entry nested as its child.
+Assemble React Router's flat `RouteManifest` into the single-rooted tree. The
+synthesized `root` entry (the one without a `parentId`) becomes the top-level
+layout; every other entry is linked to its parent through `parentId`,
+preserving the manifest's sibling order.
 
 ### Utilities
 
@@ -204,15 +211,10 @@ top-level layout, with every input entry nested as its child.
 
 ```ts
 interface LoadRoutesOptions {
-  vite?: Pick<UserConfig, "define" | "root">;
-}
-
-interface BuildRouteTreeOptions {
-  /**
-   * Absolute path of the application directory (commonly `${root}/app`).
-   * Used to normalise file paths and to locate `app/root.{tsx,...}`.
-   */
-  appDirectory: string;
+  /** Project root (defaults to `process.cwd()`). */
+  root?: string;
+  /** Forwarded to the Vite dev server used to evaluate the route config. */
+  vite?: Pick<UserConfig, "define">;
 }
 ```
 
@@ -222,13 +224,13 @@ All errors extend `RouteToolkitError`. The `kind` field discriminates:
 
 - `RouteEvaluationError` (`kind: "evaluation"`) — Vite or the runner failed,
   or the SSR environment is not runnable. Exposes `file` (the routes path).
-- `RouteValidationError` (`kind: "validation"`) — the default export is not a
-  `RouteConfigEntry[]`.
-- `RouteManifestError` (`kind: "manifest"`) — assembling the tree failed:
-  two entries resolve to the same id, a user route uses the reserved id
-  `"root"`, `app/root.tsx` is missing, or an entry is structurally invalid
-  (no `path`, no `index`, no `children`). Exposes `conflictingId` when
-  applicable.
+- `RouteValidationError` (`kind: "validation"`) — the `routes.ts` (or
+  `react-router.config.*`) default export is not a valid route config.
+- `RouteManifestError` (`kind: "manifest"`) — assembling the manifest/tree
+  failed: two routes resolve to the same id (including a user route colliding
+  with the synthesized `"root"`), `app/root.tsx` is missing, or an entry is
+  structurally invalid (no `path`, no `index`, no `children`). Exposes
+  `conflictingId` when applicable.
 
 ## Notes
 
@@ -237,8 +239,16 @@ All errors extend `RouteToolkitError`. The `kind` field discriminates:
   module resolution exactly the same way the production build does. Sharing
   one Vite instance avoids version mismatches.
 - **`__reactRouterAppDirectory`.** React Router's `getAppDirectory()` helper
-  reads this global. The toolkit sets it to `${root}/app` immediately before
-  invoking the runner so route definitions that rely on it keep working.
+  reads this global. The toolkit sets it to the resolved `appDirectory`
+  immediately before evaluating `routes.ts` so `relative()` and
+  `@react-router/fs-routes` keep working.
+- **Missing route modules are tolerated.** Only `routes.ts` and its imports are
+  evaluated — never the route modules it points at — so a config that
+  references not-yet-created files still resolves. React Router's own plugin is
+  stripped from the loaded Vite config to avoid its build pipeline reading those
+  files. The manifest is then shaped with route-resolution logic copied verbatim
+  from React Router (MIT), so route ids, app-relative file paths, and nesting
+  match React Router exactly.
 - **HMR is not supported.** Each `loadRouteTree` call starts a fresh Vite
   dev server, evaluates the routes once, and tears it down. Call it again to
   pick up changes.

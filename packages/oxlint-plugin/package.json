@@ -1,0 +1,77 @@
+{
+  "name": "@react-router-routing-toolkit/oxlint-plugin",
+  "version": "0.0.0",
+  "private": true,
+  "description": "Oxlint / ESLint plugin that verifies route module paths declared in routes.ts point to existing files.",
+  "keywords": [
+    "eslint",
+    "eslint-plugin",
+    "eslintplugin",
+    "oxlint",
+    "oxlint-plugin",
+    "oxlintplugin",
+    "react-router"
+  ],
+  "homepage": "https://github.com/sushichan044/react-router-routing-toolkit#readme",
+  "bugs": {
+    "url": "https://github.com/sushichan044/react-router-routing-toolkit/issues"
+  },
+  "license": "MIT",
+  "author": {
+    "name": "sushichan044",
+    "url": "https://github.com/sushichan044"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/sushichan044/react-router-routing-toolkit.git",
+    "directory": "packages/oxlint-plugin"
+  },
+  "funding": "https://github.com/sponsors/sushichan044",
+  "files": [
+    "dist"
+  ],
+  "type": "module",
+  "sideEffects": false,
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.mts",
+      "import": "./dist/index.mjs"
+    },
+    "./package.json": "./package.json"
+  },
+  "publishConfig": {
+    "access": "public",
+    "registry": "https://registry.npmjs.org/"
+  },
+  "scripts": {
+    "prepublishOnly": "vp pack",
+    "build": "vp pack"
+  },
+  "dependencies": {
+    "@oxlint/plugins": "catalog:prod",
+    "react-router-routing-toolkit": "workspace:*"
+  },
+  "devDependencies": {
+    "@arethetypeswrong/core": "catalog:dev",
+    "@react-router/dev": "catalog:dev",
+    "@react-router/fs-routes": "catalog:dev",
+    "@types/node": "catalog:dev",
+    "@typescript/native-preview": "catalog:dev",
+    "@virtual-live-lab/tsconfig": "catalog:dev",
+    "eslint": "catalog:dev",
+    "oxlint": "catalog:dev",
+    "publint": "catalog:dev",
+    "react-router": "catalog:dev",
+    "typescript": "catalog:dev",
+    "unplugin-unused": "catalog:dev",
+    "vite": "catalog:dev",
+    "vite-plus": "catalog:dev"
+  },
+  "peerDependencies": {
+    "react-router": ">=7.0.0",
+    "vite": "^7.0.0 || ^8.0.0"
+  },
+  "engines": {
+    "node": ">=22.12.0"
+  }
+}
