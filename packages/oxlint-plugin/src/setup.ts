@@ -1,3 +1,5 @@
+import { resolve as resolvePath } from "node:path";
+
 import { resolveReactRouterConfig } from "react-router-toolkit";
 import * as v from "valibot";
 
@@ -35,7 +37,14 @@ export async function reactRouterToolkitSettings(
 ): Promise<Record<typeof SETTINGS_KEY, ReactRouterToolkitSettings>> {
   const resolved = await resolveReactRouterConfig(options.root, { cacheDir: options.cacheDir });
   const jsonSafe: unknown = JSON.parse(JSON.stringify(resolved));
-  return { [SETTINGS_KEY]: v.parse(settingsSchema, jsonSafe) };
+  return {
+    [SETTINGS_KEY]: v.parse(settingsSchema, {
+      // Absolute so the rules can render route paths relative to it regardless of how `root` was
+      // passed.
+      root: resolvePath(options.root),
+      resolvedSettings: jsonSafe,
+    }),
+  };
 }
 
 export { SETTINGS_KEY } from "./settings";

@@ -25,8 +25,9 @@ describe("reactRouterToolkitSettings", () => {
     });
 
     const resolved = settings[SETTINGS_KEY];
-    expect(resolved.appDirectory).toBe(join(fixtureRoot("valid"), "app"));
-    expect(Object.values(resolved.routes).map((entry) => entry.file)).toEqual(
+    expect(resolved.root).toBe(fixtureRoot("valid"));
+    expect(resolved.resolvedSettings.appDirectory).toBe(join(fixtureRoot("valid"), "app"));
+    expect(Object.values(resolved.resolvedSettings.routes).map((entry) => entry.file)).toEqual(
       expect.arrayContaining(["root.tsx", "home.tsx", "about.tsx"]),
     );
   });

@@ -23,9 +23,16 @@ const routeManifestEntrySchema = v.object({
  * consume) are validated strictly; the rest of the resolved config is passed through unchanged via
  * the loose object so future rules can read it.
  */
-export const settingsSchema = v.looseObject({
-  appDirectory: v.string(),
-  routes: v.record(v.string(), routeManifestEntrySchema),
+export const settingsSchema = v.object({
+  /**
+   * Absolute path to the project root (the directory containing `vite.config.*` and the app
+   * directory).
+   */
+  root: v.string(),
+  resolvedSettings: v.looseObject({
+    appDirectory: v.string(),
+    routes: v.record(v.string(), routeManifestEntrySchema),
+  }),
 });
 
 export type ReactRouterToolkitSettings = v.InferOutput<typeof settingsSchema>;

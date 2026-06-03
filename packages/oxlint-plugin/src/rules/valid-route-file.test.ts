@@ -54,7 +54,30 @@ describe("valid-route-file", () => {
     }).not.toThrow();
   });
 
-  it("reports a missing route module on its source literal", async () => {
+  it("reports when the routes config file has no default export", async () => {
+    const settings = await fixtureSettings("valid");
+    expect(() => {
+      ruleTester.run("valid-route-file", validRouteFile, {
+        valid: [],
+        invalid: [
+          {
+            code: 'import { index, route } from "@react-router/dev/routes";\n',
+            filename: fixtureRoutesFile("valid"),
+            settings,
+            errors: [
+              {
+                messageId: "missingDefaultExport",
+                line: 1,
+                column: 0,
+              },
+            ],
+          },
+        ],
+      });
+    }).not.toThrow();
+  });
+
+  it("reports a missing route module on the export default declaration", async () => {
     const settings = await fixtureSettings("missing-file");
     expect(() => {
       ruleTester.run("valid-route-file", validRouteFile, {
@@ -68,6 +91,7 @@ describe("valid-route-file", () => {
               {
                 messageId: "missingRouteFile",
                 line: 3,
+                column: 0,
               },
             ],
           },

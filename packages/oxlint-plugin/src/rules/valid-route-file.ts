@@ -1,17 +1,15 @@
-import { resolve as resolvePath } from "node:path";
+import { existsSync } from "node:fs";
+import { relative as relativePath, resolve as resolvePath } from "node:path";
 
 import { defineRule } from "@oxlint/plugins";
 import type { ESTree, Settings } from "@oxlint/plugins";
 
 import { isRoutesConfigFile } from "../detect-routes-file";
-import { createFileExistenceChecker } from "../file-existence";
-import type { FileLiteral } from "../locate-literal";
-import { buildLiteralLocationMap, extractFileLiteral } from "../locate-literal";
 import type { ReactRouterToolkitSettings } from "../settings";
 import { readSettings } from "../settings";
 import { getRuleDocsURL } from "../utils";
 
-type MessageIds = "missingRouteFile";
+type MessageIds = "missingDefaultExport" | "missingRouteFile";
 
 const validRouteFile = defineRule({
   meta: {
@@ -22,12 +20,12 @@ const validRouteFile = defineRule({
       url: getRuleDocsURL("valid-route-file"),
     },
     messages: {
+      missingDefaultExport:
+        "Routing config file must default-export its route config (e.g. `export default [...] satisfies RouteConfig`).",
       missingRouteFile: 'Route module "{{file}}" does not exist (resolved: {{resolved}}).',
     } satisfies Record<MessageIds, string>,
   },
   createOnce: (context) => {
-    const fileExists = createFileExistenceChecker();
-
     // `context.settings` is only readable per file (not in `createOnce`), so resolve it in
     // `before()` and memoize by reference since it is the same object across files in a run.
     let settingsSource: Readonly<Settings> | undefined;
@@ -35,13 +33,11 @@ const validRouteFile = defineRule({
 
     // Reset per file in `before()`.
     let isRoutesFile = false;
-    const literals: FileLiteral[] = [];
-    let exportDefaultNode: ESTree.Node | null = null;
+    let exportDefaultNode: ESTree.ExportDefaultDeclaration | null = null;
 
     return {
       before: () => {
         isRoutesFile = false;
-        literals.length = 0;
         exportDefaultNode = null;
 
         if (context.settings !== settingsSource) {
@@ -57,23 +53,13 @@ const validRouteFile = defineRule({
           !isRoutesConfigFile(
             context.physicalFilename,
             context.sourceCode.text,
-            settings.appDirectory,
+            settings.resolvedSettings.appDirectory,
           )
         ) {
           return false;
         }
         isRoutesFile = true;
         return true;
-      },
-
-      CallExpression: (node) => {
-        if (!isRoutesFile) {
-          return;
-        }
-        const literal = extractFileLiteral(node);
-        if (literal !== null) {
-          literals.push(literal);
-        }
       },
 
       ExportDefaultDeclaration: (node) => {
@@ -83,12 +69,28 @@ const validRouteFile = defineRule({
         exportDefaultNode = node;
       },
 
-      "Program:exit": (programNode) => {
+      "Program:exit": () => {
         if (!isRoutesFile || settings === null) {
           return;
         }
-        const { appDirectory, routes } = settings;
 
+        // routes.ts must have a default export
+        if (exportDefaultNode === null) {
+          context.report({
+            loc: { line: 1, column: 0 },
+            messageId: "missingDefaultExport",
+          });
+          return;
+        }
+
+        const { root } = settings;
+        const { appDirectory, routes } = settings.resolvedSettings;
+
+        // The resolved manifest is the source of truth, so every route module is checked regardless
+        // of how it was declared (literal path, `relative()`, fs-routes, composed arrays, ...). The
+        // syntactic origin of each path is not recoverable in those cases, so all findings are
+        // reported on the `export default` keyword. Narrowing to the keyword (rather than the whole
+        // declaration) keeps the squiggle off the entire route array, which can span the file.
         const declaredFiles = [
           ...new Set(
             Object.values(routes)
@@ -97,18 +99,22 @@ const validRouteFile = defineRule({
           ),
         ];
 
-        const locationMap = buildLiteralLocationMap(literals, appDirectory);
-        const fallbackNode = exportDefaultNode ?? programNode;
+        // Avoid reporting on the whole export default node.
+        // If we do so, users will see the error on the entire routes array, and it is very uncomfortable experiencing in the IDEs.
+        const reportLoc = {
+          start: exportDefaultNode.loc.start,
+          end: exportDefaultNode.declaration.loc.start,
+        };
 
         for (const file of declaredFiles) {
           const resolved = resolvePath(appDirectory, file);
-          if (fileExists(resolved)) {
+          if (existsSync(resolved)) {
             continue;
           }
           context.report({
-            node: locationMap.get(resolved) ?? fallbackNode,
+            loc: reportLoc,
             messageId: "missingRouteFile",
-            data: { file, resolved },
+            data: { file, resolved: relativePath(root, resolved) },
           });
         }
       },
