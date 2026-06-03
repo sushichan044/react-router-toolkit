@@ -1,46 +1,38 @@
-import { basename, dirname, resolve as resolvePath } from "node:path";
+import { basename, dirname } from "node:path";
 
 /**
- * `react-router-toolkit`'s evaluator resolves `<root>/app/routes.ts`, so detection is limited to a
- * file literally named `routes.ts`.
+ * Recognized basenames for a React Router routes config file, mirroring the extensions React Router
+ * itself resolves for `routes.*`.
  */
-const ROUTES_FILE_NAME = "routes.ts";
+const ROUTES_FILE_BASENAMES: ReadonlySet<string> = new Set([
+  "routes.js",
+  "routes.jsx",
+  "routes.ts",
+  "routes.tsx",
+  "routes.mjs",
+  "routes.mts",
+]);
 
 /**
  * Imports that indicate the file declares a React Router route config rather than coincidentally
- * being named `routes.ts`.
+ * being named `routes.*`.
  */
 const ROUTE_CONFIG_MARKERS = ["@react-router/dev/routes", "@react-router/fs-routes"];
 
-export interface RoutesFileOption {
-  /**
-   * Vite root (directory containing `vite.config.*` and `app/`). Defaults to the parent of
-   * `appDirectory`.
-   */
-  readonly root?: string;
-  /** Directory route module paths resolve against. Defaults to the directory holding `routes.ts`. */
-  readonly appDirectory?: string;
-}
-
-export interface RoutesContext {
-  readonly root: string;
-  readonly appDirectory: string;
-}
-
-export function detectRoutesContext(
+/**
+ * Whether the linted file is the routes config of the resolved project: it sits directly in the
+ * resolved `appDirectory`, is named `routes.*`, and imports a React Router route config helper.
+ */
+export function isRoutesConfigFile(
   filename: string,
   sourceText: string,
-  option: RoutesFileOption | undefined,
-): RoutesContext | null {
-  if (basename(filename) !== ROUTES_FILE_NAME) {
-    return null;
+  appDirectory: string,
+): boolean {
+  if (dirname(filename) !== appDirectory) {
+    return false;
   }
-  if (!ROUTE_CONFIG_MARKERS.some((marker) => sourceText.includes(marker))) {
-    return null;
+  if (!ROUTES_FILE_BASENAMES.has(basename(filename))) {
+    return false;
   }
-
-  const appDirectory = option?.appDirectory ? resolvePath(option.appDirectory) : dirname(filename);
-  const root = option?.root ? resolvePath(option.root) : dirname(appDirectory);
-
-  return { appDirectory, root };
+  return ROUTE_CONFIG_MARKERS.some((marker) => sourceText.includes(marker));
 }

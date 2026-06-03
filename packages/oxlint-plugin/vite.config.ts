@@ -8,7 +8,7 @@ export default defineConfig({
       dts: {
         tsgo: true,
       },
-      entry: ["src/index.ts", "src/worker/**/*"],
+      entry: ["src/index.ts", "src/setup.ts"],
       fixedExtension: true,
       format: "esm",
       fromVite: true,
@@ -17,12 +17,9 @@ export default defineConfig({
       publint: true,
       sourcemap: false,
       treeshake: true,
-      // The eval worker is spawned as a child process by path, so it must keep its own file in the
-      // output tree rather than being bundled or tree-shaken away. `unbundle` preserves the source
-      // folder structure (e.g. dist/worker/eval-worker.mjs).
-      unbundle: true,
-      // `react-router` and `vite` are peer dependencies consumed transitively by the evaluator
-      // inside the worker, not imported directly, so the unused-dependency check cannot see them.
+      // `react-router` and `vite` are peer dependencies consumed transitively by
+      // `resolveReactRouterConfig` inside the setup helper, not imported directly, so the
+      // unused-dependency check cannot see them.
       unused: {
         ignore: ["react-router", "vite"],
       },

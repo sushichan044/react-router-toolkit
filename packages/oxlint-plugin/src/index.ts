@@ -1,7 +1,7 @@
 import { eslintCompatPlugin } from "@oxlint/plugins";
 
 import pkg from "../package.json" with { type: "json" };
-import validRouteFile from "./rule";
+import validRouteFile from "./rules/valid-route-file";
 
 const plugin = eslintCompatPlugin({
   meta: {
@@ -13,5 +13,3 @@ const plugin = eslintCompatPlugin({
 });
 
 export default plugin;
-
-export type { Options } from "./rule";

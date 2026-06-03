@@ -37,6 +37,10 @@
       "types": "./dist/index.d.mts",
       "import": "./dist/index.mjs"
     },
+    "./setup": {
+      "types": "./dist/setup.d.mts",
+      "import": "./dist/setup.mjs"
+    },
     "./package.json": "./package.json"
   },
   "publishConfig": {
@@ -49,7 +53,8 @@
   },
   "dependencies": {
     "@oxlint/plugins": "catalog:prod",
-    "react-router-toolkit": "workspace:*"
+    "react-router-toolkit": "workspace:*",
+    "valibot": "catalog:prod"
   },
   "devDependencies": {
     "@arethetypeswrong/core": "catalog:dev",
@@ -60,6 +65,7 @@
     "@virtual-live-lab/tsconfig": "catalog:dev",
     "eslint": "catalog:dev",
     "oxlint": "catalog:dev",
+    "pathe": "catalog:prod",
     "publint": "catalog:dev",
     "react-router": "catalog:dev",
     "typescript": "catalog:dev",

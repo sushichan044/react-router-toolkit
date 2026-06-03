@@ -1,46 +1,29 @@
-import { resolve as resolvePath } from "node:path";
-
 import { describe, expect, it } from "vite-plus/test";
 
-import { detectRoutesContext } from "./detect-routes-file";
+import { isRoutesConfigFile } from "./detect-routes-file";
 
 const ROUTES_SOURCE = `import { index } from "@react-router/dev/routes";\nexport default [index("home.tsx")];`;
+const APP_DIR = "/project/app";
 
-describe("detectRoutesContext", () => {
-  it("derives root and appDirectory from a conventional app/routes.ts", () => {
-    const context = detectRoutesContext("/project/app/routes.ts", ROUTES_SOURCE, undefined);
-
-    expect(context).toEqual({
-      appDirectory: "/project/app",
-      root: "/project",
-    });
+describe("isRoutesConfigFile", () => {
+  it("accepts a routes.ts directly inside the resolved app directory", () => {
+    expect(isRoutesConfigFile("/project/app/routes.ts", ROUTES_SOURCE, APP_DIR)).toBe(true);
   });
 
   it("recognises fs-routes config via its import marker", () => {
     const source = `import { flatRoutes } from "@react-router/fs-routes";\nexport default flatRoutes();`;
-    const context = detectRoutesContext("/project/app/routes.ts", source, undefined);
-
-    expect(context?.appDirectory).toBe("/project/app");
+    expect(isRoutesConfigFile("/project/app/routes.ts", source, APP_DIR)).toBe(true);
   });
 
-  it("ignores files not named routes.ts", () => {
-    expect(detectRoutesContext("/project/app/router.ts", ROUTES_SOURCE, undefined)).toBeNull();
+  it("rejects a routes file outside the resolved app directory", () => {
+    expect(isRoutesConfigFile("/project/other/routes.ts", ROUTES_SOURCE, APP_DIR)).toBe(false);
   });
 
-  it("ignores a routes.ts that does not import a route config helper", () => {
-    const source = `export default [];`;
-    expect(detectRoutesContext("/project/app/routes.ts", source, undefined)).toBeNull();
+  it("rejects files not named routes.*", () => {
+    expect(isRoutesConfigFile("/project/app/router.ts", ROUTES_SOURCE, APP_DIR)).toBe(false);
   });
 
-  it("honours explicit root and appDirectory options", () => {
-    const context = detectRoutesContext("/anywhere/routes.ts", ROUTES_SOURCE, {
-      appDirectory: "src/app",
-      root: "src",
-    });
-
-    expect(context).toEqual({
-      appDirectory: resolvePath("src/app"),
-      root: resolvePath("src"),
-    });
+  it("rejects a routes file that does not import a route config helper", () => {
+    expect(isRoutesConfigFile("/project/app/routes.ts", `export default [];`, APP_DIR)).toBe(false);
   });
 });
