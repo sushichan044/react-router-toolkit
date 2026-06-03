@@ -1,7 +1,5 @@
-import { mkdtempDisposable } from "node:fs/promises";
 import { isAbsolute } from "node:path";
 
-import { basename } from "pathe";
 import { describe, expect, it as baseIt } from "vite-plus/test";
 
 import { loadRoutes, RouteEvaluationError, RouteValidationError } from "../src/index";

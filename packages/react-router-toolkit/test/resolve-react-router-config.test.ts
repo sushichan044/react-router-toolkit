@@ -1,7 +1,5 @@
-import { mkdtempDisposable } from "node:fs/promises";
 import { isAbsolute, resolve } from "node:path";
 
-import { basename } from "pathe";
 import { describe, expect, it as baseIt } from "vite-plus/test";
 
 import {

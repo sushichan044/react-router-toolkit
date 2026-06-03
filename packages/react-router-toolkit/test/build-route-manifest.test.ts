@@ -1,6 +1,3 @@
-import { mkdtempDisposable } from "fs/promises";
-
-import { basename } from "pathe";
 import { describe, expect, it as baseIt } from "vite-plus/test";
 
 import { buildRouteManifest, loadRoutes, RouteManifestError } from "../src/index";

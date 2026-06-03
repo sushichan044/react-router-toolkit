@@ -7,7 +7,7 @@ export default defineConfig({
     sortImports: true,
   },
   lint: {
-    ignorePatterns: ["**/test/fixtures/**"],
+    ignorePatterns: ["**/test/fixtures/**", "**/vendor/**"],
     categories: {
       correctness: "error",
       nursery: "error",
@@ -36,6 +36,15 @@ export default defineConfig({
       "node/no-path-concat": "error",
       "unicorn/custom-error-definition": "error",
     },
+    overrides: [
+      {
+        files: ["**/*.test.{js,mjs,cjs,ts,mts,cts,jsx,tsx}"],
+        rules: {
+          // Vitest fixtures require an object-destructuring first parameter; allow `({}, use) => {}`.
+          "no-empty-pattern": ["error", { allowObjectPatternsAsParameters: true }],
+        },
+      },
+    ],
   },
   test: {
     benchmark: {

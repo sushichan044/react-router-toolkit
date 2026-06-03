@@ -1,5 +1,4 @@
 import { readFileSync } from "node:fs";
-import { mkdtempDisposable } from "node:fs/promises";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 
