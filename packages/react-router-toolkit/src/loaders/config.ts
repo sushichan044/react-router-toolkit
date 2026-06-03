@@ -21,7 +21,10 @@ export async function loadReactRouterConfig(
     return null;
   }
 
-  await using vite = await createEvaluator(root, { vite: { cacheDir: options?.cacheDir } });
+  await using vite = await createEvaluator(root, {
+    vite: { cacheDir: options?.cacheDir },
+    disableReactRouterPlugins: true,
+  });
   const mod = await vite.environment.runner.import<Record<string, unknown>>(configFile);
   const userConfig = await Promise.resolve(mod["default"]);
 
