@@ -1,31 +1,9 @@
-import { buildRouteTree } from "./builder";
-import { resolveRouteManifest } from "./evaluator";
-import type { LoadRoutesOptions, RouteTree } from "./types";
 
-/**
- * Resolve the user project's routes through its `reactRouter()` Vite plugin and assemble React
- * Router's route manifest into a {@link RouteTree} rooted at the synthesized `app/root.tsx`
- * layout.
- *
- * This is the high-level convenience wrapper around {@link resolveRouteManifest} +
- * {@link buildRouteTree}.
- */
-export async function loadRouteTree(options?: LoadRoutesOptions): Promise<RouteTree> {
-  const { routes } = await resolveRouteManifest(options);
-  return buildRouteTree(routes);
-}
-
-export type {
-  LoadRoutesOptions,
-  ResolvedRouteManifest,
-  RouteConfigEntry,
-  RouteIndex,
-  RouteManifest,
-  RouteManifestEntry,
-  RouteNode,
-  RouteTree,
-  UrlMatch,
-} from "./types";
+// Public types re-exported from the vendored React Router internals (see src/vendor/react-router).
+// These are not yet part of @react-router/dev's public API; when they become public, switch the
+// import source here from the vendor copy to @react-router/dev.
+export type { Preset, ReactRouterConfig } from "./vendor/react-router/config/config";
+export type { RouteConfigEntry } from "./vendor/react-router/config/routes";
 
 export {
   RouteEvaluationError,
@@ -33,10 +11,3 @@ export {
   RouteToolkitError,
   RouteValidationError,
 } from "./errors";
-
-export { resolveRouteManifest } from "./evaluator";
-
-export { buildRouteTree } from "./builder";
-
-export { buildRouteIndex, listRoutes, matchUrl } from "./utils";
-export type { ListRoutesOptions } from "./utils";

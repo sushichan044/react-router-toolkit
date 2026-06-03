@@ -13,6 +13,16 @@ export class RouteToolkitError extends Error {
   }
 }
 
+export class ReactRouterConfigError extends RouteToolkitError {
+  override readonly kind: "react-router-config";
+
+  constructor(message: string, options?: { cause?: unknown }) {
+    super(message, { kind: "react-router-config", cause: options?.cause });
+    this.kind = "react-router-config";
+    this.name = "ReactRouterConfigError";
+  }
+}
+
 /** Thrown when `app/routes.ts` cannot be loaded or evaluated. */
 export class RouteEvaluationError extends RouteToolkitError {
   override readonly kind: "evaluation";
@@ -53,4 +63,4 @@ export class RouteValidationError extends RouteToolkitError {
   }
 }
 
-type RouteToolkitErrorKind = "evaluation" | "manifest" | "validation";
+type RouteToolkitErrorKind = "evaluation" | "manifest" | "validation" | "react-router-config";

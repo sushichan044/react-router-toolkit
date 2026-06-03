@@ -1,66 +1,39 @@
 import { createServer, isRunnableDevEnvironment, loadConfigFromFile } from "vite";
-import type { InlineConfig, Plugin, PluginOption, RunnableDevEnvironment } from "vite";
+import type {
+  EnvironmentOptions,
+  InlineConfig,
+  Plugin,
+  PluginOption,
+  RunnableDevEnvironment,
+} from "vite";
 
 import { RouteEvaluationError } from "./errors";
-import type { LoadRoutesOptions } from "./types";
 
-/**
- * Evaluates the user's `routes.ts` / `react-router.config.ts` through Vite's
- * {@link https://vite.dev/guide/api-environment-runtimes.html ModuleRunner}.
- *
- * The user's own Vite config is loaded as-is (so path aliases match the production build), but
- * React Router's own plugin is stripped out: the toolkit only needs to _evaluate_ the route config,
- * not run React Router's full build pipeline — which reads every route module from disk during
- * config resolution and would fail when a `routes.ts` references files that do not exist yet
- * (exactly the case static analysis, e.g. a lint rule reporting missing route modules, must
- * support).
- */
-export interface RouteModuleEvaluator extends AsyncDisposable {
-  /** Evaluate a module file and return its namespace (including `default`). */
-  evaluate(file: string): Promise<Record<string, unknown>>;
+export interface Evaluator extends AsyncDisposable {
+  readonly environment: RunnableDevEnvironment;
 }
 
-export async function createRouteModuleEvaluator(
-  root: string,
-  viteOptions: LoadRoutesOptions["vite"] = {},
-): Promise<RouteModuleEvaluator> {
-  const config = await buildInlineConfig(root, viteOptions);
-  const server = await createServer(config);
-  // Apply `define`-based shims to the optimized React Router dependencies.
-  await server.environments["ssr"].depsOptimizer?.init();
-
-  const ssrEnv = server.environments["ssr"];
-  if (!isRunnableDevEnvironment(ssrEnv)) {
-    await server.close();
-    throw new RouteEvaluationError(
-      "Vite's SSR environment is not runnable. " +
-        "Ensure your Vite version is 7 or 8 with the default SSR environment enabled.",
-      { file: root },
-    );
-  }
-
-  return {
-    evaluate: (file) => evaluateModule(ssrEnv, file),
-    [Symbol.asyncDispose]: () => server.close(),
+type EvaluatorOptions = {
+  vite?: {
+    define?: Record<string, string>;
+    /** Additional config for the module runner. */
+    configEnvironment?: EnvironmentOptions | null;
   };
-}
 
-async function evaluateModule(
-  ssrEnv: RunnableDevEnvironment,
-  file: string,
-): Promise<Record<string, unknown>> {
-  try {
-    return await ssrEnv.runner.import(file);
-  } catch (cause) {
-    const detail = cause instanceof Error ? cause.message : String(cause);
-    throw new RouteEvaluationError(`Failed to evaluate "${file}": ${detail}`, { file, cause });
-  }
-}
+  /**
+   * Disable Vite plugins from `@react-router/dev/vite`.
+   *
+   * This is useful when we need to evaluate invalid `app/routes.ts` without causing errors.
+   *
+   * @default false
+   */
+  disableReactRouterPlugins?: boolean;
+};
 
-async function buildInlineConfig(
+export async function createEvaluator(
   root: string,
-  viteOptions: LoadRoutesOptions["vite"],
-): Promise<InlineConfig> {
+  options?: EvaluatorOptions,
+): Promise<Evaluator> {
   const loaded = await loadConfigFromFile(
     { command: "serve", mode: "development" },
     undefined,
@@ -69,41 +42,48 @@ async function buildInlineConfig(
 
   const { plugins: rawPlugins, server: userServer, ...restConfig } = loaded?.config ?? {};
   const userPlugins = rawPlugins ? await flattenPluginOption(rawPlugins) : [];
-  const filteredPlugins = userPlugins.filter((plugin) => !isReactRouterPlugin(plugin.name));
+  const filteredPlugins = options?.disableReactRouterPlugins
+    ? userPlugins.filter((plugin) => !isReactRouterPlugin(plugin.name))
+    : userPlugins;
 
-  return {
+  const inlineConfig = {
     ...restConfig,
     configFile: false,
     root,
-    server: { ...userServer, hmr: false },
+    server: { ...userServer, hmr: false, middlewareMode: true, watch: null },
+    logLevel: "silent",
+    define: options?.vite?.define,
     plugins: [
       ...filteredPlugins,
-      {
-        name: "react-router-toolkit:user-define",
-        config: () => ({ define: viteOptions?.define }),
-      },
-      {
-        // React Router's `relative()` / `@react-router/fs-routes` read `getAppDirectory()` at
-        // evaluation time, so these packages must run as shims inside the SSR module runner.
-        name: "react-router-toolkit:react-router-shims",
-        enforce: "post",
-        configEnvironment: (name) => {
-          if (name !== "ssr") {
-            return;
-          }
-          return {
-            optimizeDeps: {
-              include: ["@react-router/dev/routes", "@react-router/fs-routes"],
-              noDiscovery: true,
-            },
-            resolve: {
-              noExternal: ["@react-router/dev", "@react-router/fs-routes"],
-            },
-          };
-        },
-      },
+      ...(options?.vite?.configEnvironment != null
+        ? [
+            {
+              name: "react-router-toolkit:ssr-environment",
+              enforce: "post",
+              configEnvironment: (name) =>
+                name === "ssr" ? options.vite?.configEnvironment : undefined,
+            } satisfies Plugin,
+          ]
+        : []),
     ],
-    logLevel: "silent",
+  } satisfies InlineConfig;
+
+  const server = await createServer(inlineConfig);
+  await server.environments["ssr"].depsOptimizer?.init();
+
+  if (!isRunnableDevEnvironment(server.environments["ssr"])) {
+    await server.close();
+    throw new RouteEvaluationError(
+      "Vite's SSR environment is not runnable. " +
+        "Ensure your Vite version is 7 or 8 with the default SSR environment enabled.",
+      { file: root },
+    );
+  }
+
+  const environment = server.environments["ssr"];
+  return {
+    environment,
+    [Symbol.asyncDispose]: () => server.close(),
   };
 }
 

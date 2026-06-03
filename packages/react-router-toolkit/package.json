@@ -40,6 +40,10 @@
     "prepublishOnly": "vp pack",
     "build": "vp pack"
   },
+  "dependencies": {
+    "pathe": "catalog:prod",
+    "valibot": "catalog:prod"
+  },
   "devDependencies": {
     "@arethetypeswrong/core": "catalog:dev",
     "@react-router/dev": "catalog:dev",
