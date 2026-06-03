@@ -1,3 +1,5 @@
+import type { PluginOption } from "vite";
+
 import { RouteEvaluationError, RouteValidationError } from "../errors";
 import { findEntry } from "../vendor/react-router/config/config";
 import { validateRouteConfig } from "../vendor/react-router/config/routes";
@@ -13,10 +15,23 @@ type RoutesConfig = {
   config: RouteConfigEntry[];
 };
 
+type LoadRoutesOptions = {
+  cacheDir?: string;
+  /**
+   * Partially override the Vite config used to evaluate `routes.ts`. Useful for snapshot tests that
+   * flip an `import.meta` flag (via `define`) to evaluate alternative routings from the same file,
+   * or inject extra `plugins`.
+   */
+  vite?: {
+    define?: Record<string, string>;
+    plugins?: PluginOption[];
+  };
+};
+
 export async function loadRoutes(
   appDirectory: string,
   root: string,
-  options?: { cacheDir?: string },
+  options?: LoadRoutesOptions,
 ): Promise<RoutesConfig> {
   const routesFile = findEntry(appDirectory, ROUTES_BASENAME, { absolute: true });
   if (routesFile === undefined) {
@@ -30,7 +45,13 @@ export async function loadRoutes(
     disableReactRouterPlugins: true,
     vite: {
       cacheDir: options?.cacheDir,
-      define: { "globalThis.__reactRouterAppDirectory": JSON.stringify(appDirectory) },
+      plugins: options?.vite?.plugins,
+      // The toolkit owns `__reactRouterAppDirectory` (derived from the `appDirectory` argument), so
+      // it always wins over caller-provided `define`.
+      define: {
+        ...options?.vite?.define,
+        "globalThis.__reactRouterAppDirectory": JSON.stringify(appDirectory),
+      },
       configEnvironment: {
         optimizeDeps: {
           include: ["@react-router/dev/routes", "@react-router/fs-routes"],

@@ -63,4 +63,26 @@ export class RouteValidationError extends RouteToolkitError {
   }
 }
 
-type RouteToolkitErrorKind = "evaluation" | "manifest" | "validation" | "react-router-config";
+/**
+ * Thrown by {@link flattenRouteTree} when two distinct path routes resolve to the same URL, which
+ * makes the URL → layout mapping ambiguous. (An index route sharing its parent's URL is expected
+ * and does not trigger this.)
+ */
+export class RouteLayoutConflictError extends RouteToolkitError {
+  override readonly kind: "layout-conflict";
+  readonly url: string;
+
+  constructor(message: string, options: { url: string; cause?: unknown }) {
+    super(message, { kind: "layout-conflict", cause: options.cause });
+    this.kind = "layout-conflict";
+    this.url = options.url;
+    this.name = "RouteLayoutConflictError";
+  }
+}
+
+type RouteToolkitErrorKind =
+  | "evaluation"
+  | "manifest"
+  | "validation"
+  | "react-router-config"
+  | "layout-conflict";

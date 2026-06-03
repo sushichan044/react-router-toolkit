@@ -16,6 +16,12 @@ export interface Evaluator extends AsyncDisposable {
 type EvaluatorOptions = {
   vite?: {
     define?: Record<string, string>;
+    /**
+     * Extra Vite plugins to add on top of the ones discovered from the project's `vite.config.*`.
+     * Unlike the discovered plugins, these are never filtered by {@link disableReactRouterPlugins}
+     * — a caller adding them explicitly is taken at face value.
+     */
+    plugins?: PluginOption[];
     /** Additional config for the module runner. */
     configEnvironment?: EnvironmentOptions | null;
     /**
@@ -54,6 +60,9 @@ export async function createEvaluator(
   const filteredPlugins = options?.disableReactRouterPlugins
     ? userPlugins.filter((plugin) => !isReactRouterPlugin(plugin.name))
     : userPlugins;
+  const extraPlugins = options?.vite?.plugins
+    ? await flattenPluginOption(options.vite.plugins)
+    : [];
 
   const inlineConfig = {
     ...restConfig,
@@ -62,9 +71,12 @@ export async function createEvaluator(
     cacheDir: options?.vite?.cacheDir,
     server: { ...userServer, hmr: false, middlewareMode: true, watch: null },
     logLevel: "silent",
-    define: options?.vite?.define,
+    // Merge over the project's own `define` so callers can override `import.meta`/global flags
+    // without losing what `vite.config.*` already declares.
+    define: { ...restConfig.define, ...options?.vite?.define },
     plugins: [
       ...filteredPlugins,
+      ...extraPlugins,
       ...(options?.vite?.configEnvironment != null
         ? [
             {

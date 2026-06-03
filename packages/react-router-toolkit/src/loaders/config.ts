@@ -1,3 +1,5 @@
+import type { PluginOption } from "vite";
+
 import { ReactRouterConfigError } from "../errors";
 import { findEntry } from "../vendor/react-router/config/config";
 import type { ReactRouterConfig as Config } from "../vendor/react-router/config/config";
@@ -12,9 +14,18 @@ type ReactRouterConfig = {
   config: Config;
 };
 
+type LoadReactRouterConfigOptions = {
+  cacheDir?: string;
+  /** Partially override the Vite config used to evaluate `react-router.config.ts`. */
+  vite?: {
+    define?: Record<string, string>;
+    plugins?: PluginOption[];
+  };
+};
+
 export async function loadReactRouterConfig(
   root: string,
-  options?: { cacheDir?: string },
+  options?: LoadReactRouterConfigOptions,
 ): Promise<ReactRouterConfig | null> {
   const configFile = findEntry(root, REACT_ROUTER_CONFIG_BASENAME, { absolute: true });
   if (configFile === undefined) {
@@ -22,7 +33,11 @@ export async function loadReactRouterConfig(
   }
 
   await using vite = await createEvaluator(root, {
-    vite: { cacheDir: options?.cacheDir },
+    vite: {
+      cacheDir: options?.cacheDir,
+      define: options?.vite?.define,
+      plugins: options?.vite?.plugins,
+    },
     disableReactRouterPlugins: true,
   });
   const mod = await vite.environment.runner.import<Record<string, unknown>>(configFile);

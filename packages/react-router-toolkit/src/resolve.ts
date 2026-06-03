@@ -1,3 +1,5 @@
+import type { PluginOption } from "vite";
+
 import { ReactRouterConfigError, RouteManifestError } from "./errors";
 import { loadReactRouterConfig } from "./loaders/config";
 import { loadRoutes } from "./loaders/routes";
@@ -13,6 +15,14 @@ type ResolveReactRouterConfigOptions = {
    * project concurrently (e.g. parallel test files).
    */
   cacheDir?: string;
+  /**
+   * Partially override the Vite config used by both evaluators (`react-router.config.ts` and
+   * `routes.ts`). Useful for flipping an `import.meta` flag via `define` or injecting `plugins`.
+   */
+  vite?: {
+    define?: Record<string, string>;
+    plugins?: PluginOption[];
+  };
 };
 
 /**
@@ -31,13 +41,17 @@ export async function resolveReactRouterConfig(
   root: string,
   options?: ResolveReactRouterConfigOptions,
 ): Promise<ResolvedReactRouterConfig> {
-  const loaded = await loadReactRouterConfig(root, { cacheDir: options?.cacheDir });
+  const loaded = await loadReactRouterConfig(root, {
+    cacheDir: options?.cacheDir,
+    vite: options?.vite,
+  });
 
   const result = await resolveConfig({
     root,
     reactRouterUserConfig: loaded?.config ?? {},
     loadRouteConfig: async (appDirectory) =>
-      (await loadRoutes(appDirectory, root, { cacheDir: options?.cacheDir })).config,
+      (await loadRoutes(appDirectory, root, { cacheDir: options?.cacheDir, vite: options?.vite }))
+        .config,
     skipRoutes: options?.skipRoutes,
   });
 

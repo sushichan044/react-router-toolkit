@@ -1,8 +1,14 @@
 import { isAbsolute } from "node:path";
 
+import type { Plugin } from "vite";
 import { describe, expect, it as baseIt } from "vite-plus/test";
 
-import { loadRoutes, RouteEvaluationError, RouteValidationError } from "../src/index";
+import {
+  flattenRouteTree,
+  loadRoutes,
+  RouteEvaluationError,
+  RouteValidationError,
+} from "../src/index";
 import { appDir, fixtureRoot } from "./fixture";
 import { makeTempDir } from "./utils";
 
@@ -47,5 +53,47 @@ describe("loadRoutes", () => {
     await expect(
       loadRoutes(appDir("root-id"), fixtureRoot("root-id"), { cacheDir }),
     ).rejects.toBeInstanceOf(RouteValidationError);
+  });
+
+  it("evaluates the routing branch selected by a caller-provided define", async ({ cacheDir }) => {
+    const root = fixtureRoot("import-meta-branch");
+    const app = appDir("import-meta-branch");
+
+    const fsRoutes = await loadRoutes(app, root, {
+      cacheDir,
+      vite: { define: { "import.meta.env.RR_USE_FS_ROUTES": "true" } },
+    });
+    const manualRoutes = await loadRoutes(app, root, {
+      cacheDir,
+      vite: { define: { "import.meta.env.RR_USE_FS_ROUTES": "false" } },
+    });
+
+    // Both branches expose the same URLs wrapped by the same layouts — the snapshot-test use case.
+    const expected = {
+      "/": { file: "routes/_index.tsx", layouts: [] },
+      "/hello": { file: "routes/hello.tsx", layouts: [] },
+    };
+    expect(flattenRouteTree(manualRoutes.config)).toStrictEqual(expected);
+    expect(flattenRouteTree(fsRoutes.config)).toStrictEqual(flattenRouteTree(manualRoutes.config));
+  });
+
+  it("applies caller-provided plugins when evaluating routes.ts", async ({ cacheDir }) => {
+    const virtualModule: Plugin = {
+      name: "test:virtual-routes",
+      resolveId(id) {
+        return id === "virtual:toolkit-test" ? `\0${id}` : undefined;
+      },
+      load(id) {
+        return id === "\0virtual:toolkit-test" ? `export const extraPath = "injected";` : undefined;
+      },
+    };
+
+    const { config } = await loadRoutes(appDir("plugin-virtual"), fixtureRoot("plugin-virtual"), {
+      cacheDir,
+      vite: { plugins: [virtualModule] },
+    });
+
+    expect(config).toHaveLength(1);
+    expect(config[0]).toMatchObject({ file: "home.tsx", path: "injected" });
   });
 });
