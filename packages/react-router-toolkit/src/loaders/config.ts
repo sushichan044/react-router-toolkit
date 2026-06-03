@@ -1,7 +1,7 @@
 import { ReactRouterConfigError } from "../errors";
+import { findEntry } from "../vendor/react-router/config/config";
 import type { ReactRouterConfig as Config } from "../vendor/react-router/config/config";
 import { createEvaluator } from "../vite";
-import { findEntry } from "./utils";  // this logic should be vendored from react-router
 
 const REACT_ROUTER_CONFIG_BASENAME = "react-router.config";
 
@@ -12,13 +12,16 @@ type ReactRouterConfig = {
   config: Config;
 };
 
-export async function loadReactRouterConfig(root: string): Promise<ReactRouterConfig | null> {
-  const configFile = findEntry(root, REACT_ROUTER_CONFIG_BASENAME);
+export async function loadReactRouterConfig(
+  root: string,
+  options?: { cacheDir?: string },
+): Promise<ReactRouterConfig | null> {
+  const configFile = findEntry(root, REACT_ROUTER_CONFIG_BASENAME, { absolute: true });
   if (configFile === undefined) {
     return null;
   }
 
-  await using vite = await createEvaluator(root);
+  await using vite = await createEvaluator(root, { vite: { cacheDir: options?.cacheDir } });
   const mod = await vite.environment.runner.import<Record<string, unknown>>(configFile);
   const userConfig = await Promise.resolve(mod["default"]);
 

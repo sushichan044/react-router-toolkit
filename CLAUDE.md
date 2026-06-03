@@ -9,4 +9,4 @@
 
 ## Coding
 
-- Vitest: `globals: true`. DO NOT IMPORT Vitest APIs.
+- Vitest: `globals: false`. Import test APIs from `vite-plus/test`.

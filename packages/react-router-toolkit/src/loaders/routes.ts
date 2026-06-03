@@ -1,8 +1,8 @@
 import { RouteEvaluationError, RouteValidationError } from "../errors";
+import { findEntry } from "../vendor/react-router/config/config";
 import { validateRouteConfig } from "../vendor/react-router/config/routes";
 import type { RouteConfigEntry } from "../vendor/react-router/config/routes";
 import { createEvaluator } from "../vite";
-import { findEntry } from "./utils"; // this logic should be vendored from react-router
 
 const ROUTES_BASENAME = "routes";
 
@@ -13,8 +13,12 @@ type RoutesConfig = {
   config: RouteConfigEntry[];
 };
 
-export async function loadRoutes(appDirectory: string, root: string): Promise<RoutesConfig> {
-  const routesFile = findEntry(appDirectory, ROUTES_BASENAME);
+export async function loadRoutes(
+  appDirectory: string,
+  root: string,
+  options?: { cacheDir?: string },
+): Promise<RoutesConfig> {
+  const routesFile = findEntry(appDirectory, ROUTES_BASENAME, { absolute: true });
   if (routesFile === undefined) {
     throw new RouteEvaluationError(
       `Could not find a route config file ("${ROUTES_BASENAME}.ts") in "${appDirectory}".`,
@@ -25,6 +29,7 @@ export async function loadRoutes(appDirectory: string, root: string): Promise<Ro
   await using vite = await createEvaluator(root, {
     disableReactRouterPlugins: true,
     vite: {
+      cacheDir: options?.cacheDir,
       define: { "globalThis.__reactRouterAppDirectory": JSON.stringify(appDirectory) },
       configEnvironment: {
         optimizeDeps: {

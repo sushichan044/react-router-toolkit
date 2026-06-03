@@ -6,19 +6,30 @@
  * Upstream source: packages/react-router-dev/config/config.ts (react-router v7.15.1) →
  * `ReactRouterConfig` (L127), `ResolvedReactRouterConfig` (L268), `Preset` (L34), the supporting
  * type graph (`FutureConfig`, `BuildEndHook`, `BuildManifest`, `ServerBundlesFunction`,
- * `PrerenderPaths`, …) and `mergeReactRouterConfig`.
+ * `PrerenderPaths`, …), `mergeReactRouterConfig`, the `findEntry` file-discovery helper (plus its
+ * `entryExts` table), and the resolution body of `resolveConfig`.
  * https://github.com/remix-run/react-router/blob/main/packages/react-router-dev/config/config.ts
  *
- * Toolkit-specific changes vs. upstream: - The vite-node based loader pipeline
- * (`resolveConfig`/`createConfigLoader`, the chokidar watcher, `detectPackageManager`, etc.) is
- * intentionally NOT copied — the toolkit loads config/routes through its own Vite Module Runner
- * evaluator (see `src/vite.ts`). Only the config types and `mergeReactRouterConfig` are vendored. -
+ * Toolkit-specific changes vs. upstream: - `resolveConfig` is vendored only for its _resolution_
+ * logic (presets, defaults, prerender/routeDiscovery normalization, route manifest assembly, future
+ * flag resolution). The surrounding vite-node loader pipeline (`createConfigLoader`, the chokidar
+ * watcher, `detectPackageManager`, etc.) is intentionally NOT copied — config/routes are loaded
+ * through the toolkit's own Vite Module Runner evaluator (see `src/vite.ts`) and the already-loaded
+ * data is injected into `resolveConfig`. - Side effects are dropped: `logFutureFlagWarnings`
+ * (console output) and the `colors`-based error formatting are removed; instead `resolveConfig`
+ * returns a discriminated result so callers can map failures to typed errors. - `cloneDeep`/the
+ * defensive deep-freeze of the _input_ user config is not performed (the input is owned by the
+ * caller); only the resolved output is deep-frozen to honor its `Readonly` type. -
  * `configRouteToBranchRoute` (a `lodash/pick`-based runtime helper) is dropped; only the
  * `BranchRoute` type it accompanies is kept (needed by `ServerBundlesFunction`).
  */
 
+import { existsSync } from "node:fs";
+
+import * as Path from "pathe";
 import type * as Vite from "vite";
 
+import { configRoutesToRouteManifest } from "./routes";
 import type { RouteConfigEntry, RouteManifest, RouteManifestEntry } from "./routes";
 
 const excludedConfigPresetKeys = ["presets"] as const satisfies ReadonlyArray<
@@ -263,4 +274,338 @@ export function mergeReactRouterConfig(...configs: ReactRouterConfig[]): ReactRo
   };
 
   return configs.reduce(reducer, {});
+}
+
+const entryExts = [".js", ".jsx", ".ts", ".tsx", ".mjs", ".mts"];
+
+export function findEntry(
+  dir: string,
+  basename: string,
+  options?: {
+    absolute?: boolean;
+    extensions?: string[];
+    walkParents?: boolean;
+  },
+): string | undefined {
+  let currentDir = Path.resolve(dir);
+  let { root } = Path.parse(currentDir);
+
+  while (true) {
+    for (let ext of options?.extensions ?? entryExts) {
+      let file = Path.resolve(currentDir, basename + ext);
+      if (existsSync(file)) {
+        return (options?.absolute ?? false) ? file : Path.relative(dir, file);
+      }
+    }
+
+    if (!options?.walkParents) {
+      return undefined;
+    }
+
+    let parentDir = Path.dirname(currentDir);
+    // Break out when we've reached the root directory or we're about to get
+    // stuck in a loop where `path.dirname` keeps returning "/"
+    if (currentDir === root || parentDir === currentDir) {
+      return undefined;
+    }
+
+    currentDir = parentDir;
+  }
+}
+
+export type ResolveConfigArgs = {
+  /** The absolute path to the project root directory. */
+  root: string;
+  /** The raw user config (default export of `react-router.config.*`), or `{}` when absent. */
+  reactRouterUserConfig: ReactRouterConfig;
+  /**
+   * Load the validated route config entries (default export of `routes.*`) for the given app
+   * directory. Invoked only when {@link ResolveConfigArgs.skipRoutes} is not `true`, and only after
+   * `appDirectory` has been resolved from the merged preset/user config — so presets that relocate
+   * `appDirectory` are honored. This is the injection point that replaces React Router's vite-node
+   * loader with the toolkit's Vite Module Runner evaluator.
+   */
+  loadRouteConfig: (appDirectory: string) => RouteConfigEntry[] | Promise<RouteConfigEntry[]>;
+  /** Skip route manifest assembly; `routes` resolves to an empty manifest. */
+  skipRoutes?: boolean;
+};
+
+export type ResolveConfigResult =
+  | { ok: true; value: ResolvedReactRouterConfig }
+  | { ok: false; kind: "config" | "manifest"; message: string };
+
+/**
+ * The resolution body of React Router's `resolveConfig`, with the file-loading replaced by injected
+ * `reactRouterUserConfig` / `routeConfig`. Returns a discriminated result instead of throwing so
+ * the toolkit layer can map `kind` to a typed error.
+ */
+export async function resolveConfig({
+  root,
+  reactRouterUserConfig,
+  loadRouteConfig,
+  skipRoutes,
+}: ResolveConfigArgs): Promise<ResolveConfigResult> {
+  const err = (kind: "config" | "manifest", message: string): ResolveConfigResult => ({
+    ok: false,
+    kind,
+    message,
+  });
+
+  let presets: ReactRouterConfig[] = (
+    await Promise.all(
+      (reactRouterUserConfig.presets ?? []).map(async (preset) => {
+        if (!preset.name) {
+          throw new Error("React Router presets must have a `name` property defined.");
+        }
+
+        if (!preset.reactRouterConfig) {
+          return null;
+        }
+
+        // Defensively strip `presets` (excludedConfigPresetKeys) even though the type omits it.
+        let { presets: _presets, ...configPreset } = (await preset.reactRouterConfig({
+          reactRouterUserConfig,
+        })) as ReactRouterConfig;
+
+        return configPreset;
+      }),
+    )
+  ).filter(function isNotNull<T>(value: T | null): value is T {
+    return value !== null;
+  });
+
+  let defaults = {
+    basename: "/",
+    buildDirectory: "build",
+    serverBuildFile: "index.js",
+    serverModuleFormat: "esm",
+    ssr: true,
+  } as const satisfies Partial<ReactRouterConfig>;
+
+  let userAndPresetConfigs = mergeReactRouterConfig(...presets, reactRouterUserConfig);
+
+  let {
+    appDirectory: userAppDirectory,
+    basename,
+    buildDirectory: userBuildDirectory,
+    buildEnd,
+    prerender,
+    routeDiscovery: userRouteDiscovery,
+    serverBuildFile,
+    serverBundles,
+    serverModuleFormat,
+    ssr,
+  } = {
+    ...defaults, // Default values should be completely overridden by user/preset config, not merged
+    ...userAndPresetConfigs,
+  };
+
+  if (!ssr && serverBundles) {
+    serverBundles = undefined;
+  }
+
+  if (prerender) {
+    let isValidPrerenderPathsConfig = (p: unknown) =>
+      typeof p === "boolean" || typeof p === "function" || Array.isArray(p);
+
+    let isValidPrerenderConfig =
+      isValidPrerenderPathsConfig(prerender) ||
+      (typeof prerender === "object" &&
+        "paths" in prerender &&
+        isValidPrerenderPathsConfig(prerender.paths));
+
+    if (!isValidPrerenderConfig) {
+      return err(
+        "config",
+        "The `prerender`/`prerender.paths` config must be a boolean, an array " +
+          "of string paths, or a function returning a boolean or array of string paths.",
+      );
+    }
+
+    if (typeof prerender === "object" && "unstable_concurrency" in prerender) {
+      return err(
+        "config",
+        "The `prerender.unstable_concurrency` config field has been stabilized as `prerender.concurrency`",
+      );
+    }
+
+    let isValidConcurrencyConfig =
+      typeof prerender != "object" ||
+      !("concurrency" in prerender) ||
+      (typeof prerender.concurrency === "number" &&
+        Number.isInteger(prerender.concurrency) &&
+        prerender.concurrency > 0);
+
+    if (!isValidConcurrencyConfig) {
+      return err(
+        "config",
+        "The `prerender.concurrency` config must be a positive integer if specified.",
+      );
+    }
+  }
+
+  let routeDiscovery: ResolvedReactRouterConfig["routeDiscovery"];
+  if (userRouteDiscovery == null) {
+    if (ssr) {
+      routeDiscovery = {
+        mode: "lazy",
+        manifestPath: "/__manifest",
+      };
+    } else {
+      routeDiscovery = { mode: "initial" };
+    }
+  } else if (userRouteDiscovery.mode === "initial") {
+    routeDiscovery = userRouteDiscovery;
+  } else if (userRouteDiscovery.mode === "lazy") {
+    if (!ssr) {
+      return err(
+        "config",
+        'The `routeDiscovery.mode` config cannot be set to "lazy" when setting `ssr:false`',
+      );
+    }
+
+    let { manifestPath } = userRouteDiscovery;
+    if (manifestPath != null && !manifestPath.startsWith("/")) {
+      return err(
+        "config",
+        "The `routeDiscovery.manifestPath` config must be a root-relative " +
+          'pathname beginning with a slash (i.e., "/__manifest")',
+      );
+    }
+
+    routeDiscovery = userRouteDiscovery;
+  }
+
+  let appDirectory = Path.resolve(root, userAppDirectory || "app");
+  let buildDirectory = Path.resolve(root, userBuildDirectory);
+
+  let rootRouteFile = findEntry(appDirectory, "root", { absolute: true });
+  if (!rootRouteFile) {
+    let rootRouteDisplayPath = Path.relative(root, Path.join(appDirectory, "root.tsx"));
+    return err(
+      "manifest",
+      `Could not find a root route module in the app directory as "${rootRouteDisplayPath}"`,
+    );
+  }
+
+  let routes: RouteManifest;
+  let resolvedRouteConfig: RouteConfigEntry[] = [];
+
+  if (skipRoutes) {
+    routes = {};
+  } else {
+    let routeConfig = await loadRouteConfig(appDirectory);
+
+    // Nest the route config under the resolved root route
+    resolvedRouteConfig = [
+      {
+        id: "root",
+        path: "",
+        file: Path.relative(appDirectory, rootRouteFile),
+        children: routeConfig,
+      },
+    ];
+
+    try {
+      routes = configRoutesToRouteManifest(appDirectory, resolvedRouteConfig);
+    } catch (error) {
+      return err("manifest", error instanceof Error ? error.message : String(error));
+    }
+  }
+
+  // Check for renamed flags and provide helpful error messages
+  let futureConfig = userAndPresetConfigs.future;
+  if (futureConfig) {
+    if ("unstable_splitRouteModules" in futureConfig) {
+      return err(
+        "config",
+        "The `future.unstable_splitRouteModules` flag has been stabilized as `future.v8_splitRouteModules`",
+      );
+    }
+    if ("unstable_viteEnvironmentApi" in futureConfig) {
+      return err(
+        "config",
+        "The `future.unstable_viteEnvironmentApi` flag has been stabilized as `future.v8_viteEnvironmentApi`",
+      );
+    }
+    if ("unstable_passThroughRequests" in futureConfig) {
+      return err(
+        "config",
+        "The `future.unstable_passThroughRequests` flag has been stabilized as `future.v8_passThroughRequests`",
+      );
+    }
+    if ("unstable_trailingSlashAwareDataRequests" in futureConfig) {
+      return err(
+        "config",
+        "The `future.unstable_trailingSlashAwareDataRequests` flag has been stabilized as `future.v8_trailingSlashAwareDataRequests`",
+      );
+    }
+    if ("unstable_subResourceIntegrity" in futureConfig) {
+      return err(
+        "config",
+        "The `future.unstable_subResourceIntegrity` flag has been stabilized and moved to a top-level `config.subResourceIntegrity` field",
+      );
+    }
+  }
+
+  let future: FutureConfig = {
+    unstable_optimizeDeps: userAndPresetConfigs.future?.unstable_optimizeDeps ?? false,
+    v8_passThroughRequests: userAndPresetConfigs.future?.v8_passThroughRequests ?? false,
+    v8_trailingSlashAwareDataRequests:
+      userAndPresetConfigs.future?.v8_trailingSlashAwareDataRequests ?? false,
+    unstable_previewServerPrerendering:
+      userAndPresetConfigs.future?.unstable_previewServerPrerendering ?? false,
+    v8_middleware: userAndPresetConfigs.future?.v8_middleware ?? false,
+    v8_splitRouteModules: userAndPresetConfigs.future?.v8_splitRouteModules ?? false,
+    v8_viteEnvironmentApi:
+      (userAndPresetConfigs.future?.v8_viteEnvironmentApi ||
+        userAndPresetConfigs.future?.unstable_previewServerPrerendering) ??
+      false,
+  };
+
+  let allowedActionOrigins = userAndPresetConfigs.allowedActionOrigins ?? false;
+  let subResourceIntegrity = userAndPresetConfigs.subResourceIntegrity ?? false;
+
+  let reactRouterConfig: ResolvedReactRouterConfig = deepFreeze({
+    appDirectory,
+    basename,
+    buildDirectory,
+    buildEnd,
+    future,
+    prerender,
+    routes,
+    routeDiscovery,
+    serverBuildFile,
+    serverBundles,
+    serverModuleFormat,
+    ssr,
+    subResourceIntegrity,
+    allowedActionOrigins,
+    unstable_routeConfig: resolvedRouteConfig,
+  } satisfies ResolvedReactRouterConfig);
+
+  for (let preset of reactRouterUserConfig.presets ?? []) {
+    await preset.reactRouterConfigResolved?.({ reactRouterConfig });
+  }
+
+  return { ok: true, value: reactRouterConfig };
+}
+
+// Standard recursive freeze (MDN). Used only on the resolved output to honor its `Readonly` type.
+function deepFreeze<T>(value: T): T {
+  Object.freeze(value);
+  let isFunction = typeof value === "function";
+  for (let key of Object.getOwnPropertyNames(value)) {
+    let prop = (value as Record<string, unknown>)[key];
+    if (
+      Object.prototype.hasOwnProperty.call(value, key) &&
+      (isFunction ? key !== "caller" && key !== "callee" && key !== "arguments" : true) &&
+      prop !== null &&
+      (typeof prop === "object" || typeof prop === "function") &&
+      !Object.isFrozen(prop)
+    ) {
+      deepFreeze(prop);
+    }
+  }
+  return value;
 }

@@ -18,6 +18,15 @@ type EvaluatorOptions = {
     define?: Record<string, string>;
     /** Additional config for the module runner. */
     configEnvironment?: EnvironmentOptions | null;
+    /**
+     * Override Vite's dependency-optimization cache directory. Defaults to Vite's own default
+     * (`<root>/node_modules/.vite`).
+     *
+     * Mainly useful when running multiple evaluators concurrently against the same project (e.g.
+     * parallel test files): they would otherwise race on the shared deps cache commit. Pass a
+     * unique directory per evaluator to isolate them.
+     */
+    cacheDir?: string;
   };
 
   /**
@@ -50,6 +59,7 @@ export async function createEvaluator(
     ...restConfig,
     configFile: false,
     root,
+    cacheDir: options?.vite?.cacheDir,
     server: { ...userServer, hmr: false, middlewareMode: true, watch: null },
     logLevel: "silent",
     define: options?.vite?.define,
