@@ -41,6 +41,7 @@
     "build": "vp pack"
   },
   "dependencies": {
+    "oxc-parser": "catalog:prod",
     "pathe": "catalog:prod",
     "valibot": "catalog:prod"
   },

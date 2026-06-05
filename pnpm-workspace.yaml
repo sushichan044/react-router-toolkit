@@ -23,6 +23,7 @@ catalogs:
     vite-plus: 0.1.22
   prod:
     "@oxlint/plugins": 1.62.0
+    oxc-parser: 0.134.0
     pathe: ^2.0.3
     type-fest: ^5.6.0
     valibot: 1.4.1

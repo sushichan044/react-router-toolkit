@@ -1,6 +1,7 @@
 import { eslintCompatPlugin } from "@oxlint/plugins";
 
 import pkg from "../package.json" with { type: "json" };
+import typeSafeOutletContext from "./rules/type-safe-outlet-context";
 import validRouteFile from "./rules/valid-route-file";
 
 const plugin = eslintCompatPlugin({
@@ -9,6 +10,7 @@ const plugin = eslintCompatPlugin({
   },
   rules: {
     "valid-route-file": validRouteFile,
+    "type-safe-outlet-context": typeSafeOutletContext,
   },
 });
 

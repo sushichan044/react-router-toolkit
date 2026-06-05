@@ -2,6 +2,13 @@ export { loadReactRouterConfig } from "./loaders/config";
 export { loadRoutes } from "./loaders/routes";
 export { buildRouteManifest } from "./loaders/manifest";
 export { resolveReactRouterConfig } from "./resolve";
+export { analyzeRouteModules } from "./route-module-info";
+export type {
+  OutletContextTypeReference,
+  OutletInfo,
+  RouteModuleInfo,
+  SourceSpan,
+} from "./route-module-info";
 export { flattenRouteTree } from "./route-tree";
 export type { RouteLayoutInfo, RouteLayoutMap } from "./route-tree";
 
