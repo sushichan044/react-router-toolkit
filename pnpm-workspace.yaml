@@ -6,23 +6,23 @@ allowBuilds:
 
 catalogs:
   dev:
-    "@arethetypeswrong/core": 0.18.2
-    "@react-router/dev": 7.15.1
-    "@react-router/fs-routes": ^7.15.1
+    "@arethetypeswrong/core": 0.18.3
+    "@react-router/dev": 7.16.0
+    "@react-router/fs-routes": ^7.16.0
     "@types/node": 25.9.1
     "@typescript/native-preview": 7.0.0-dev.20260524.1
     "@virtual-live-lab/tsconfig": 2.1.23
     eslint: 9.39.2
-    oxlint: 1.62.0
+    oxlint: 1.68.0
     pkg-pr-new: 0.0.75
     publint: 0.3.21
-    react-router: 7.15.1
+    react-router: 7.16.0
     typescript: 6.0.3
     unplugin-unused: 0.5.7
-    vite: 8.0.14
-    vite-plus: 0.1.22
+    vite: 8.0.16
+    vite-plus: 0.1.24
   prod:
-    "@oxlint/plugins": 1.62.0
+    "@oxlint/plugins": 1.68.0
     oxc-parser: 0.134.0
     pathe: ^2.0.3
     type-fest: ^5.6.0
