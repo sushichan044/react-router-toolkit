@@ -46,11 +46,54 @@ const outletInfoSchema = v.object({
   ),
 });
 
+const exportDeclarationKindSchema = v.picklist([
+  "function",
+  "class",
+  "arrow",
+  "variable",
+  "expression",
+  "reexport",
+]);
+
+const routeExportInfoSchema = v.object({
+  span: sourceSpanSchema,
+  declarationKind: exportDeclarationKindSchema,
+  isAsync: v.boolean(),
+  reexportSource: v.nullable(v.string()),
+});
+
+const clientLoaderExportInfoSchema = v.object({
+  ...routeExportInfoSchema.entries,
+  hydrate: v.boolean(),
+});
+
+const routeModuleExportsSchema = v.object({
+  default: v.nullable(routeExportInfoSchema),
+  ErrorBoundary: v.nullable(routeExportInfoSchema),
+  HydrateFallback: v.nullable(routeExportInfoSchema),
+  loader: v.nullable(routeExportInfoSchema),
+  clientLoader: v.nullable(clientLoaderExportInfoSchema),
+  action: v.nullable(routeExportInfoSchema),
+  clientAction: v.nullable(routeExportInfoSchema),
+  middleware: v.nullable(routeExportInfoSchema),
+  clientMiddleware: v.nullable(routeExportInfoSchema),
+  headers: v.nullable(routeExportInfoSchema),
+  links: v.nullable(routeExportInfoSchema),
+  meta: v.nullable(routeExportInfoSchema),
+  handle: v.nullable(routeExportInfoSchema),
+  shouldRevalidate: v.nullable(routeExportInfoSchema),
+});
+
+const unknownExportInfoSchema = v.object({
+  ...routeExportInfoSchema.entries,
+  name: v.string(),
+});
+
 /**
  * Per-route facts derived from each module's source at setup time (see `analyzeRouteModules` in
- * `react-router-toolkit`): the module's physical path and the outlet context it passes. Descendant
- * routes read their parent's entry to type `useOutletContext` without any cross-file parsing at
- * lint time.
+ * `react-router-toolkit`): the module's physical path, the outlet context it passes, and its
+ * recognized route-module exports. Rules read these without any cross-file parsing at lint time
+ * (e.g. descendant routes read their parent's entry to type `useOutletContext`).
  */
 const routeModuleInfoSchema = v.object({
   id: v.string(),
@@ -58,6 +101,8 @@ const routeModuleInfoSchema = v.object({
   file: v.string(),
   physicalFile: v.string(),
   outlets: v.array(outletInfoSchema),
+  exports: routeModuleExportsSchema,
+  unknownExports: v.array(unknownExportInfoSchema),
 });
 
 /**
