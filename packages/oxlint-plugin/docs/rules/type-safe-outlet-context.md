@@ -43,9 +43,25 @@ invasive: adding `export` silently changes the module's public surface, and rewr
 | `satisfies Name` where `Name` is not a type alias declared here | `outletContextTypeNotLocal`      |
 | `satisfies Name` where `Name` is not exported                   | `outletContextTypeNotExported`   |
 | `<Outlet {...props} />` (spread attributes)                     | `outletSpreadAttribute`          |
+| `<Outlet>` rendered from an exported (non-default) component    | `outletInExportedComponent`      |
 
 Spreading attributes onto `<Outlet>` is forbidden: it hides whether — and with what type — context
 is passed, which breaks the static guarantee descendant routes rely on. Pass `context` explicitly.
+
+### Where the `<Outlet>` must be rendered
+
+React Router renders a route module's **default export** as the route component, so only an
+`<Outlet>` reached from the default export actually passes context to child routes. The rule
+recognizes an `<Outlet>` when it is rendered either:
+
+- directly inside the default-export component, or
+- inside a **non-exported local component** that the default export renders.
+
+An `<Outlet>` placed in an **exported** (non-default) component is reported as
+`outletInExportedComponent`: because React Router never renders that component as this route, the
+Outlet does not pass context to descendants. Move it into the default export (or a non-exported
+local component it renders). An `<Outlet>` in a local component that the default export never renders
+is dead code and is ignored. These same rules decide which outlet a child route infers from.
 
 ## Child route (calls `useOutletContext()`)
 

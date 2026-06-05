@@ -9,4 +9,9 @@ export default [
     layout("middle-no-context.tsx", [route("grandchild", "grandchild.tsx")]),
   ]),
   layout("layout-no-context.tsx", [route("other", "other.tsx")]),
+  // Outlet placement variants: the parent renders <Outlet> from different locations, which decides
+  // whether the child inherits context (see type-safe-outlet-context).
+  layout("layout-exported-component.tsx", [route("exported", "child-exported-component.tsx")]),
+  layout("layout-local-component.tsx", [route("local", "child-local-component.tsx")]),
+  layout("layout-unreachable-local.tsx", [route("unreachable", "child-unreachable-local.tsx")]),
 ] satisfies RouteConfig;
