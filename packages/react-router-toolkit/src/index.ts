@@ -4,10 +4,15 @@ export { buildRouteManifest } from "./loaders/manifest";
 export { resolveReactRouterConfig } from "./resolve";
 export { analyzeRouteModules } from "./route-module-info";
 export type {
+  ClientLoaderExportInfo,
+  ExportDeclarationKind,
   OutletContextTypeReference,
   OutletInfo,
+  RouteExportInfo,
+  RouteModuleExports,
   RouteModuleInfo,
   SourceSpan,
+  UnknownExportInfo,
 } from "./route-module-info";
 export { flattenRouteTree } from "./route-tree";
 export type { RouteLayoutInfo, RouteLayoutMap } from "./route-tree";
