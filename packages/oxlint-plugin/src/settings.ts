@@ -18,10 +18,53 @@ const routeManifestEntrySchema = v.object({
   parentId: v.optional(v.string()),
 });
 
+const sourceSpanSchema = v.object({
+  start: v.number(),
+  end: v.number(),
+});
+
+const outletContextTypeSchema = v.object({
+  text: v.string(),
+  span: sourceSpanSchema,
+  localTypeAlias: v.nullable(
+    v.object({
+      exported: v.boolean(),
+      span: sourceSpanSchema,
+    }),
+  ),
+});
+
+const outletInfoSchema = v.object({
+  span: sourceSpanSchema,
+  passesContext: v.boolean(),
+  hasSpread: v.boolean(),
+  annotation: v.nullable(
+    v.object({
+      operator: v.picklist(["satisfies", "as"]),
+      type: outletContextTypeSchema,
+    }),
+  ),
+});
+
+/**
+ * Per-route facts derived from each module's source at setup time (see `analyzeRouteModules` in
+ * `react-router-toolkit`): the module's physical path and the outlet context it passes. Descendant
+ * routes read their parent's entry to type `useOutletContext` without any cross-file parsing at
+ * lint time.
+ */
+const routeModuleInfoSchema = v.object({
+  id: v.string(),
+  parentId: v.optional(v.string()),
+  file: v.string(),
+  physicalFile: v.string(),
+  outlets: v.array(outletInfoSchema),
+});
+
 /**
  * JSON-compatible view of `ResolvedReactRouterConfig`. `appDirectory` and `routes` (what the rules
  * consume) are validated strictly; the rest of the resolved config is passed through unchanged via
- * the loose object so future rules can read it.
+ * the loose object so future rules can read it. `routeModules` carries the source-derived outlet
+ * context facts keyed by route id.
  */
 export const settingsSchema = v.object({
   /**
@@ -33,7 +76,11 @@ export const settingsSchema = v.object({
     appDirectory: v.string(),
     routes: v.record(v.string(), routeManifestEntrySchema),
   }),
+  routeModules: v.optional(v.record(v.string(), routeModuleInfoSchema)),
 });
+
+export type RouteModuleInfo = v.InferOutput<typeof routeModuleInfoSchema>;
+export type OutletInfo = v.InferOutput<typeof outletInfoSchema>;
 
 export type ReactRouterToolkitSettings = v.InferOutput<typeof settingsSchema>;
 

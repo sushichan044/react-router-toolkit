@@ -1,6 +1,6 @@
 import { resolve as resolvePath } from "node:path";
 
-import { resolveReactRouterConfig } from "react-router-toolkit";
+import { analyzeRouteModules, resolveReactRouterConfig } from "react-router-toolkit";
 import * as v from "valibot";
 
 import type { ReactRouterToolkitSettings } from "./settings";
@@ -43,6 +43,8 @@ export async function reactRouterToolkitSettings(
       // passed.
       root: resolvePath(options.root),
       resolvedSettings: jsonSafe,
+      // Source-derived outlet context facts, parsed once here so lint rules never read other files.
+      routeModules: analyzeRouteModules(resolved),
     }),
   };
 }

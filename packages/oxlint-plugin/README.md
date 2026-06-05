@@ -31,13 +31,16 @@ export default defineConfig({
   },
   rules: {
     "react-router-toolkit/valid-route-file": "error",
+    "react-router-toolkit/type-safe-outlet-context": "error",
   },
 });
 ```
 
 `reactRouterToolkitSettings({ root })` resolves the config the same way React Router does at build
 time (honoring your `vite.config.ts`, aliases, plugins, presets, and `appDirectory`) and returns it
-under the `"react-router-toolkit"` settings key as a JSON-serializable object.
+under the `"react-router-toolkit"` settings key as a JSON-serializable object. Alongside the resolved
+manifest it also analyzes each route module's source once (via `oxc-parser`) and records the outlet
+context type it passes, so the rules never re-read other files while linting.
 
 ## Rules
 
@@ -46,3 +49,16 @@ under the `"react-router-toolkit"` settings key as a JSON-serializable object.
 Reports every route module path declared via `index`, `route`, `layout`, ... in the resolved route
 manifest whose file does not exist on disk. The diagnostic is reported on the exact source literal in
 `routes.ts` when available.
+
+### `type-safe-outlet-context`
+
+Keeps `useOutletContext<T>()` in sync with the parent layout's `<Outlet context={...}>` without
+writing the type on both sides. See [docs/rules/type-safe-outlet-context.md](./docs/rules/type-safe-outlet-context.md).
+
+- **Parent route** (renders `<Outlet context={...}>`): the context value must be annotated with
+  `satisfies <Type>`, where `<Type>` is a type alias **defined and exported in that same module**.
+  Anything else (no annotation, `as`, an inline type, a non-local or non-exported type) is reported
+  as an error with no auto-fix — silently adding `export` or rewriting `as` is too invasive.
+- **Child route** (calls `useOutletContext()`): the rule fills in / corrects the generic type
+  argument to that exported type and adds the `import type { Type }` from the parent module. When the
+  parent passes no context, the child is left untouched.
