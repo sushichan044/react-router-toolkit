@@ -120,6 +120,24 @@ describe("analyzeRouteModules export analysis", () => {
     expect(info.exports.loader).not.toBeNull();
   });
 
+  it("ignores outlets declared inside non-rendered nested helpers", () => {
+    const info = analyzeOne("routes/nested-helper-outlet.tsx");
+
+    expect(info.outlets).toEqual([]);
+  });
+
+  it("collects outlets rendered through a non-exported local component", () => {
+    const info = analyzeOne("routes/local-component-outlet.tsx");
+
+    expect(info.outlets).toHaveLength(1);
+  });
+
+  it("collects outlets from a function-expression default export", () => {
+    const info = analyzeOne("routes/function-expression-default.tsx");
+
+    expect(info.outlets).toHaveLength(1);
+  });
+
   it("returns empty analysis for a missing file without throwing", () => {
     const info = analyzeOne("routes/does-not-exist.tsx");
 

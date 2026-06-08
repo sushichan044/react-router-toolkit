@@ -511,5 +511,32 @@ export default function LayoutUnreachableLocal() {
         });
       }).not.toThrow();
     });
+
+    it("ignores an <Outlet> in a nested helper the default export does not render", async () => {
+      const settings = await fixtureSettings();
+      expect(() => {
+        ruleTester.run("type-safe-outlet-context", typeSafeOutletContext, {
+          valid: [
+            {
+              code: `import { Outlet } from "react-router";
+
+type ShopContext = { shopId: string };
+
+export default function LayoutUnreachableLocal() {
+  function NeverRendered() {
+    return <Outlet context={{ shopId: "shop_1" } satisfies ShopContext} />;
+  }
+
+  return <div>no outlet here</div>;
+}
+`,
+              filename: appFile("layout-unreachable-local.tsx"),
+              settings,
+            },
+          ],
+          invalid: [],
+        });
+      }).not.toThrow();
+    });
   });
 });

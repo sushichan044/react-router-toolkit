@@ -510,7 +510,7 @@ function collectReachableOutlets(
   visited: Set<string>,
   out: ESTree.JSXOpeningElement[],
 ): void {
-  walk(body, (node) => {
+  walkReachableBody(body, (node) => {
     if (node.type !== "JSXOpeningElement") {
       return;
     }
@@ -527,6 +527,40 @@ function collectReachableOutlets(
       collectReachableOutlets(scope.localComponents.get(name)!, scope, visited, out);
     }
   });
+}
+
+function walkReachableBody(node: unknown, visit: (node: ESTree.Node) => void): void {
+  if (Array.isArray(node)) {
+    for (const item of node) {
+      walkReachableBody(item, visit);
+    }
+    return;
+  }
+  if (node === null || typeof node !== "object") {
+    return;
+  }
+  if (typeof (node as { type?: unknown }).type === "string") {
+    const astNode = node as ESTree.Node;
+    if (isFunctionOrClassNode(astNode)) {
+      return;
+    }
+    visit(astNode);
+  }
+  for (const [key, value] of Object.entries(node)) {
+    if (key !== "parent") {
+      walkReachableBody(value, visit);
+    }
+  }
+}
+
+function isFunctionOrClassNode(node: ESTree.Node): boolean {
+  return (
+    node.type === "FunctionDeclaration" ||
+    node.type === "FunctionExpression" ||
+    node.type === "ArrowFunctionExpression" ||
+    node.type === "ClassDeclaration" ||
+    node.type === "ClassExpression"
+  );
 }
 
 /** Depth-first walk over the AST, skipping `parent` back-references to avoid cycles. */

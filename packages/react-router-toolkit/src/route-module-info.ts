@@ -561,6 +561,12 @@ function resolveDefaultExportBody(
   if (declaration.type === "FunctionDeclaration") {
     return (declaration as FunctionNode).body;
   }
+  if (declaration.type === "FunctionExpression") {
+    return (declaration as FunctionNode).body;
+  }
+  if (declaration.type === "ParenthesizedExpression") {
+    return resolveDefaultExportBody(declaration.expression, scope);
+  }
   if (declaration.type === "ArrowFunctionExpression") {
     return declaration.body;
   }
@@ -582,7 +588,7 @@ function collectReachableOutlets(
   visited: Set<string>,
 ): OutletInfo[] {
   const outlets: OutletInfo[] = [];
-  walk(body, (node) => {
+  walkReachableBody(body, (node) => {
     if (node.type !== "JSXOpeningElement") {
       return;
     }
@@ -602,6 +608,40 @@ function collectReachableOutlets(
     }
   });
   return outlets;
+}
+
+function walkReachableBody(node: unknown, visit: (node: Node) => void): void {
+  if (Array.isArray(node)) {
+    for (const item of node) {
+      walkReachableBody(item, visit);
+    }
+    return;
+  }
+  if (node === null || typeof node !== "object") {
+    return;
+  }
+  if (typeof (node as { type?: unknown }).type === "string") {
+    const astNode = node as Node;
+    if (isFunctionOrClassNode(astNode)) {
+      return;
+    }
+    visit(astNode);
+  }
+  for (const [key, value] of Object.entries(node)) {
+    if (key !== "parent") {
+      walkReachableBody(value, visit);
+    }
+  }
+}
+
+function isFunctionOrClassNode(node: Node): boolean {
+  return (
+    node.type === "FunctionDeclaration" ||
+    node.type === "FunctionExpression" ||
+    node.type === "ArrowFunctionExpression" ||
+    node.type === "ClassDeclaration" ||
+    node.type === "ClassExpression"
+  );
 }
 
 function isOutletName(name: JSXOpeningElement["name"], scope: ModuleScope): boolean {
@@ -668,24 +708,4 @@ function readAnnotation(
     operator: expression.type === "TSSatisfiesExpression" ? "satisfies" : "as",
     type: { text, span: { start: typeNode.start, end: typeNode.end }, localTypeAlias },
   };
-}
-
-function walk(node: unknown, visit: (node: Node) => void): void {
-  if (Array.isArray(node)) {
-    for (const item of node) {
-      walk(item, visit);
-    }
-    return;
-  }
-  if (node === null || typeof node !== "object") {
-    return;
-  }
-  if (typeof (node as { type?: unknown }).type === "string") {
-    visit(node as Node);
-  }
-  for (const [key, value] of Object.entries(node)) {
-    if (key !== "parent") {
-      walk(value, visit);
-    }
-  }
 }
