@@ -304,7 +304,7 @@ function collectModule(program: Program): CollectedModule {
               isAsync: false,
               reexportSource,
             });
-            if (specifier.local.type === "Identifier") {
+            if (statement.source === null && specifier.local.type === "Identifier") {
               scope.exportedNames.add(specifier.local.name);
             }
           }

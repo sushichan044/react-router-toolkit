@@ -132,6 +132,12 @@ describe("analyzeRouteModules export analysis", () => {
     expect(info.outlets).toHaveLength(1);
   });
 
+  it("collects outlets from a local component whose name is also re-exported from another module", () => {
+    const info = analyzeOne("routes/reexport-name-shadow.tsx");
+
+    expect(info.outlets).toHaveLength(1);
+  });
+
   it("collects outlets from a function-expression default export", () => {
     const info = analyzeOne("routes/function-expression-default.tsx");
 
