@@ -21,6 +21,37 @@ const VALID = {
     subResourceIntegrity: false,
     allowedActionOrigins: false,
   },
+  routeModules: {
+    root: {
+      id: "root",
+      file: "root.tsx",
+      physicalFile: "/project/app/root.tsx",
+      fileExists: true,
+      outlets: [],
+      exports: {
+        default: {
+          span: { start: 0, end: 0 },
+          declarationKind: "function",
+          isAsync: false,
+          reexportSource: null,
+        },
+        ErrorBoundary: null,
+        HydrateFallback: null,
+        loader: null,
+        clientLoader: null,
+        action: null,
+        clientAction: null,
+        middleware: null,
+        clientMiddleware: null,
+        headers: null,
+        links: null,
+        meta: null,
+        handle: null,
+        shouldRevalidate: null,
+      },
+      unknownExports: [],
+    },
+  },
 };
 
 describe("readSettings", () => {
@@ -35,6 +66,13 @@ describe("readSettings", () => {
     expect(parsed?.root).toBe("/project");
     expect(parsed?.resolvedSettings.appDirectory).toBe("/project/app");
     expect(parsed?.resolvedSettings.routes["routes/home"]?.file).toBe("home.tsx");
+    expect(parsed?.routeModules["root"]?.fileExists).toBe(true);
+  });
+
+  it("throws when routeModules is missing", () => {
+    const { routeModules: _routeModules, ...withoutRouteModules } = VALID;
+
+    expect(() => readSettings({ [SETTINGS_KEY]: withoutRouteModules })).toThrow();
   });
 
   it("strips resolved-config fields the schema does not declare", () => {

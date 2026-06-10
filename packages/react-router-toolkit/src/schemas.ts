@@ -117,6 +117,12 @@ export const routeModuleInfoSchema = v.object({
   file: v.string(),
   /** Absolute path to the module on disk. */
   physicalFile: v.string(),
+  /**
+   * Whether the module file could be read during analysis. `false` means the manifest declares a
+   * module that does not exist, so consumers (e.g. lint rules) can report it without touching the
+   * filesystem themselves.
+   */
+  fileExists: v.boolean(),
   /** Every `<Outlet>` rendered by this module, in source order. */
   outlets: v.array(outletInfoSchema),
   /** The recognized route-module exports, keyed by name; `null` slots are absent. */

@@ -43,7 +43,8 @@ export async function reactRouterToolkitSettings(
       // passed.
       root: resolvePath(options.root),
       resolvedSettings: jsonSafe,
-      // Source-derived outlet context facts, parsed once here so lint rules never read other files.
+      // Source-derived facts (file existence, outlet context, exports), gathered once here so lint
+      // rules never touch the filesystem.
       routeModules: await analyzeRouteModules(resolved),
     }),
   };

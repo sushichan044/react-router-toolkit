@@ -41,6 +41,7 @@ function routeModule(
     id,
     file,
     physicalFile: `${ROOT}/app/${file}`,
+    fileExists: true,
     outlets: [],
     exports: NO_EXPORTS,
     unknownExports: [],

@@ -1,6 +1,7 @@
-import { readFile } from "node:fs/promises";
 import { resolve as resolvePath } from "node:path";
 
+import { create, RealFSProvider } from "@platformatic/vfs";
+import type { VirtualFileSystem } from "@platformatic/vfs";
 import { parse } from "oxc-parser";
 import type {
   Declaration,
@@ -35,15 +36,22 @@ import type { ResolvedReactRouterConfig } from "./vendor/react-router/config/con
  * path, the outlets they render, and their recognized exports. This is pure syntax analysis (no
  * type checking). Modules are read and parsed concurrently, and a file registered under multiple
  * route ids is read and parsed only once.
+ *
+ * `files` is a filesystem rooted at `resolved.appDirectory`; modules are read via their
+ * app-relative `file` path. It defaults to the real filesystem — pass a `MemoryProvider`-backed VFS
+ * to analyze sources in tests without touching disk.
  */
 export async function analyzeRouteModules(
   resolved: Pick<ResolvedReactRouterConfig, "appDirectory" | "routes">,
+  files: VirtualFileSystem = create(new RealFSProvider(resolved.appDirectory), {
+    moduleHooks: false,
+  }),
 ): Promise<Record<string, RouteModuleInfo>> {
   const analyses = new Map<string, Promise<ModuleAnalysis>>();
-  const analyzeOnce = (physicalFile: string): Promise<ModuleAnalysis> => {
+  const analyzeOnce = (file: string, physicalFile: string): Promise<ModuleAnalysis> => {
     let analysis = analyses.get(physicalFile);
     if (analysis === undefined) {
-      analysis = analyzeModuleFile(physicalFile);
+      analysis = analyzeModuleFile(files, file, physicalFile);
       analyses.set(physicalFile, analysis);
     }
     return analysis;
@@ -52,7 +60,7 @@ export async function analyzeRouteModules(
   const entries = await Promise.all(
     Object.values(resolved.routes).map(async (entry): Promise<[string, RouteModuleInfo]> => {
       const physicalFile = resolvePath(resolved.appDirectory, entry.file);
-      const analysis = await analyzeOnce(physicalFile);
+      const analysis = await analyzeOnce(entry.file, physicalFile);
       return [
         entry.id,
         {
@@ -60,6 +68,7 @@ export async function analyzeRouteModules(
           ...(entry.parentId === undefined ? {} : { parentId: entry.parentId }),
           file: entry.file,
           physicalFile,
+          fileExists: analysis.fileExists,
           outlets: analysis.outlets,
           exports: analysis.exports,
           unknownExports: analysis.unknownExports,
@@ -71,17 +80,22 @@ export async function analyzeRouteModules(
 }
 
 interface ModuleAnalysis {
+  fileExists: boolean;
   outlets: OutletInfo[];
   exports: RouteModuleExports;
   unknownExports: UnknownExportInfo[];
 }
 
-async function analyzeModuleFile(physicalFile: string): Promise<ModuleAnalysis> {
+async function analyzeModuleFile(
+  files: VirtualFileSystem,
+  file: string,
+  physicalFile: string,
+): Promise<ModuleAnalysis> {
   let source: string;
   try {
-    source = await readFile(physicalFile, "utf8");
+    source = await files.promises.readFile(`/${file}`, "utf8");
   } catch {
-    return { outlets: [], exports: emptyExports(), unknownExports: [] };
+    return { fileExists: false, outlets: [], exports: emptyExports(), unknownExports: [] };
   }
   const { program } = await parse(physicalFile, source);
 
@@ -96,7 +110,7 @@ async function analyzeModuleFile(physicalFile: string): Promise<ModuleAnalysis> 
       ? collectOutlets(defaultDeclaration, source, scope)
       : [];
 
-  return { outlets, exports, unknownExports };
+  return { fileExists: true, outlets, exports, unknownExports };
 }
 
 const RECOGNIZED_EXPORT_NAMES = new Set<keyof RouteModuleExports>([

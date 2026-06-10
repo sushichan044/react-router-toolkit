@@ -28,7 +28,7 @@ export const settingsSchema = v.object({
    */
   root: v.string(),
   resolvedSettings: resolvedReactRouterConfigSchema,
-  routeModules: v.optional(v.record(v.string(), routeModuleInfoSchema)),
+  routeModules: v.record(v.string(), routeModuleInfoSchema),
 });
 
 export type { OutletInfo, RouteModuleInfo } from "react-router-toolkit";

@@ -1,6 +1,7 @@
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 
+import { create } from "@platformatic/vfs";
 import { describe, expect, it } from "vite-plus/test";
 
 import { analyzeRouteModules } from "../src/route-module-info";
@@ -78,12 +79,10 @@ describe("analyzeRouteModules export analysis", () => {
   });
 
   it("defaults clientLoader.hydrate to false without an assignment", async () => {
-    const info = await analyzeOne("routes/arrow-action.tsx");
+    const info = await analyzeOne("routes/client-loader-no-hydrate.tsx");
 
-    // No clientLoader here, but a hydrate-bearing module must default the flag elsewhere.
-    const reexported = await analyzeOne("routes/local-reexport.tsx");
-    expect(reexported.exports.clientLoader).toBeNull();
-    expect(info.exports.clientLoader).toBeNull();
+    expect(info.exports.clientLoader).not.toBeNull();
+    expect(info.exports.clientLoader?.hydrate).toBe(false);
   });
 
   it("keeps unrecognized exports out of the known slots", async () => {
@@ -144,13 +143,20 @@ describe("analyzeRouteModules export analysis", () => {
     expect(info.outlets).toHaveLength(1);
   });
 
-  it("returns empty analysis for a missing file without throwing", async () => {
+  it("returns empty analysis with fileExists false for a missing file without throwing", async () => {
     const info = await analyzeOne("routes/does-not-exist.tsx");
 
+    expect(info.fileExists).toBe(false);
     expect(info.outlets).toEqual([]);
     expect(info.unknownExports).toEqual([]);
     expect(info.exports.default).toBeNull();
     expect(info.exports.loader).toBeNull();
+  });
+
+  it("marks an analyzable module with fileExists true", async () => {
+    const info = await analyzeOne("routes/async-loader.tsx");
+
+    expect(info.fileExists).toBe(true);
   });
 
   it("captures a span that points at the declaration source", async () => {
@@ -160,5 +166,36 @@ describe("analyzeRouteModules export analysis", () => {
 
     const span = info.exports.loader!.span;
     expect(source.slice(span.start, span.end)).toContain("export async function loader");
+  });
+});
+
+describe("analyzeRouteModules with a virtual filesystem", () => {
+  it("analyzes modules from an in-memory filesystem without touching disk", async () => {
+    const files = create({ moduleHooks: false });
+    await files.promises.mkdir("/routes", { recursive: true });
+    await files.promises.writeFile(
+      "/routes/home.tsx",
+      "export default function Home() {\n  return null;\n}\n",
+    );
+
+    const result = await analyzeRouteModules(
+      { appDirectory: "/virtual-app", routes: { home: { id: "home", file: "routes/home.tsx" } } },
+      files,
+    );
+
+    expect(result["home"]?.fileExists).toBe(true);
+    expect(result["home"]?.exports.default?.declarationKind).toBe("function");
+  });
+
+  it("marks routes whose module is absent from the filesystem as missing", async () => {
+    const files = create({ moduleHooks: false });
+
+    const result = await analyzeRouteModules(
+      { appDirectory: "/virtual-app", routes: { gone: { id: "gone", file: "routes/gone.tsx" } } },
+      files,
+    );
+
+    expect(result["gone"]?.fileExists).toBe(false);
+    expect(result["gone"]?.exports.default).toBeNull();
   });
 });

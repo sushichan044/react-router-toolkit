@@ -61,6 +61,9 @@ const typeSafeOutletContext = defineRule({
   createOnce: (context) => {
     let settingsSource: Readonly<Settings> | undefined;
     let settings: ReactRouterToolkitSettings | null = null;
+    // Rebuilt only when `settings` changes: looking a file up by its physical path must not cost a
+    // scan over every route on every file.
+    let entriesByFile = new Map<string, RouteModuleInfo[]>();
 
     // Resolved per file in `before()`. One module file can be registered under several route ids
     // (`route("a", "x.tsx")` / `route("b", "x.tsx")`), so every registration is collected — the
@@ -74,7 +77,9 @@ const typeSafeOutletContext = defineRule({
     let localTypeAliases = new Map<string, ESTree.TSTypeAliasDeclaration>();
     let exportedNames = new Set<string>();
 
-    // Child role.
+    // Child role: every local binding of `useOutletContext`, the calls to it, and what the
+    // auto-fix needs to place its type import (names already in scope, the last import to insert
+    // after).
     let useOutletContextNames = new Set<string>();
     let knownNames = new Set<string>();
     let calls: ESTree.CallExpression[] = [];
@@ -94,15 +99,30 @@ const typeSafeOutletContext = defineRule({
         if (context.settings !== settingsSource) {
           settingsSource = context.settings;
           settings = readSettings(context.settings);
+          entriesByFile = new Map();
+          if (settings !== null) {
+            for (const entry of Object.values(settings.routeModules)) {
+              const entries = entriesByFile.get(entry.physicalFile);
+              if (entries === undefined) {
+                entriesByFile.set(entry.physicalFile, [entry]);
+              } else {
+                entries.push(entry);
+              }
+            }
+          }
         }
-        if (settings === null || settings.routeModules === undefined) {
+        if (settings === null) {
           return false;
         }
         routeModules = settings.routeModules;
-        selfEntries = Object.values(routeModules).filter(
-          (entry) => entry.physicalFile === context.physicalFilename,
-        );
-        return selfEntries.length > 0;
+        selfEntries = entriesByFile.get(context.physicalFilename) ?? [];
+        if (selfEntries.length === 0) {
+          return false;
+        }
+        // String fast path: the parent role needs `<Outlet>` and the child role needs
+        // `useOutletContext` (which contains "Outlet"), so a module without that substring can
+        // never be reported by either role.
+        return context.sourceCode.text.includes("Outlet");
       },
 
       ImportDeclaration: (node) => {
