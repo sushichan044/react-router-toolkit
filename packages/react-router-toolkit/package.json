@@ -19,6 +19,9 @@
     "directory": "packages/react-router-toolkit"
   },
   "funding": "https://github.com/sponsors/sushichan044",
+  "bin": {
+    "react-router-toolkit": "./dist/cli.mjs"
+  },
   "files": [
     "dist"
   ],
@@ -41,6 +44,8 @@
     "build": "vp pack"
   },
   "dependencies": {
+    "@platformatic/vfs": "catalog:prod",
+    "gunshi": "catalog:prod",
     "oxc-parser": "catalog:prod",
     "pathe": "catalog:prod",
     "valibot": "catalog:prod"

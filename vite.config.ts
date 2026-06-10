@@ -35,6 +35,12 @@ export default defineConfig({
       "typescript/non-nullable-type-assertion-style": "error",
       "node/no-path-concat": "error",
       "unicorn/custom-error-definition": "error",
+      "unicorn/switch-case-braces": "error",
+      "typescript/switch-exhaustiveness-check": "error",
+      "oxc/branches-sharing-code": "error",
+      "unicorn/consistent-assert": "error",
+      "typescript/no-confusing-void-expression": "error",
+      "unicorn/prefer-date-now": "error",
     },
     overrides: [
       {

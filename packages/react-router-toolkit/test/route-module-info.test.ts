@@ -1,17 +1,18 @@
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 
+import { create } from "@platformatic/vfs";
 import { describe, expect, it } from "vite-plus/test";
 
 import { analyzeRouteModules } from "../src/route-module-info";
-import type { RouteModuleInfo } from "../src/route-module-info";
+import type { RouteModuleInfo } from "../src/schemas";
 import { appDir } from "./fixture";
 
 const APP = appDir("route-module-exports");
 
 /** Analyze a single fixture route module and return its info. */
-function analyzeOne(file: string): RouteModuleInfo {
-  const result = analyzeRouteModules({
+async function analyzeOne(file: string): Promise<RouteModuleInfo> {
+  const result = await analyzeRouteModules({
     appDirectory: APP,
     routes: { route: { id: "route", file } },
   });
@@ -19,8 +20,8 @@ function analyzeOne(file: string): RouteModuleInfo {
 }
 
 describe("analyzeRouteModules export analysis", () => {
-  it("records an async function loader and a function default component", () => {
-    const info = analyzeOne("routes/async-loader.tsx");
+  it("records an async function loader and a function default component", async () => {
+    const info = await analyzeOne("routes/async-loader.tsx");
 
     expect(info.exports.loader).not.toBeNull();
     expect(info.exports.loader?.declarationKind).toBe("function");
@@ -31,45 +32,45 @@ describe("analyzeRouteModules export analysis", () => {
     expect(info.exports.default?.isAsync).toBe(false);
   });
 
-  it("reports absent exports as null", () => {
-    const info = analyzeOne("routes/async-loader.tsx");
+  it("reports absent exports as null", async () => {
+    const info = await analyzeOne("routes/async-loader.tsx");
 
     expect(info.exports.action).toBeNull();
     expect(info.exports.meta).toBeNull();
     expect(info.exports.clientLoader).toBeNull();
   });
 
-  it("records an async arrow-function action", () => {
-    const info = analyzeOne("routes/arrow-action.tsx");
+  it("records an async arrow-function action", async () => {
+    const info = await analyzeOne("routes/arrow-action.tsx");
 
     expect(info.exports.action?.declarationKind).toBe("arrow");
     expect(info.exports.action?.isAsync).toBe(true);
   });
 
-  it("records a default class component", () => {
-    const info = analyzeOne("routes/class-component.tsx");
+  it("records a default class component", async () => {
+    const info = await analyzeOne("routes/class-component.tsx");
 
     expect(info.exports.default?.declarationKind).toBe("class");
     expect(info.exports.default?.isAsync).toBe(false);
   });
 
-  it("records a cross-file re-exported loader with its source", () => {
-    const info = analyzeOne("routes/reexported-loader.tsx");
+  it("records a cross-file re-exported loader with its source", async () => {
+    const info = await analyzeOne("routes/reexported-loader.tsx");
 
     expect(info.exports.loader?.declarationKind).toBe("reexport");
     expect(info.exports.loader?.reexportSource).toBe("./loader-impl");
     expect(info.exports.loader?.isAsync).toBe(false);
   });
 
-  it("records a local re-export with a null source", () => {
-    const info = analyzeOne("routes/local-reexport.tsx");
+  it("records a local re-export with a null source", async () => {
+    const info = await analyzeOne("routes/local-reexport.tsx");
 
     expect(info.exports.loader?.declarationKind).toBe("reexport");
     expect(info.exports.loader?.reexportSource).toBeNull();
   });
 
-  it("flags clientLoader.hydrate when the assignment is present", () => {
-    const info = analyzeOne("routes/client-loader-hydrate.tsx");
+  it("flags clientLoader.hydrate when the assignment is present", async () => {
+    const info = await analyzeOne("routes/client-loader-hydrate.tsx");
 
     expect(info.exports.clientLoader).not.toBeNull();
     expect(info.exports.clientLoader?.declarationKind).toBe("arrow");
@@ -77,17 +78,15 @@ describe("analyzeRouteModules export analysis", () => {
     expect(info.exports.clientLoader?.hydrate).toBe(true);
   });
 
-  it("defaults clientLoader.hydrate to false without an assignment", () => {
-    const info = analyzeOne("routes/arrow-action.tsx");
+  it("defaults clientLoader.hydrate to false without an assignment", async () => {
+    const info = await analyzeOne("routes/client-loader-no-hydrate.tsx");
 
-    // No clientLoader here, but a hydrate-bearing module must default the flag elsewhere.
-    const reexported = analyzeOne("routes/local-reexport.tsx");
-    expect(reexported.exports.clientLoader).toBeNull();
-    expect(info.exports.clientLoader).toBeNull();
+    expect(info.exports.clientLoader).not.toBeNull();
+    expect(info.exports.clientLoader?.hydrate).toBe(false);
   });
 
-  it("keeps unrecognized exports out of the known slots", () => {
-    const info = analyzeOne("routes/unknown-export.tsx");
+  it("keeps unrecognized exports out of the known slots", async () => {
+    const info = await analyzeOne("routes/unknown-export.tsx");
 
     expect(info.exports.loader).toBeNull();
     expect(info.unknownExports).toHaveLength(1);
@@ -95,8 +94,8 @@ describe("analyzeRouteModules export analysis", () => {
     expect(info.unknownExports[0]?.declarationKind).toBe("arrow");
   });
 
-  it("records only the default export for a default-only module", () => {
-    const info = analyzeOne("routes/default-only.tsx");
+  it("records only the default export for a default-only module", async () => {
+    const info = await analyzeOne("routes/default-only.tsx");
 
     expect(info.exports.default).not.toBeNull();
     expect(info.unknownExports).toEqual([]);
@@ -106,59 +105,97 @@ describe("analyzeRouteModules export analysis", () => {
     expect(presentNames).toEqual(["default"]);
   });
 
-  it("records multiple exports declared in one statement", () => {
-    const info = analyzeOne("routes/multiple-vars.tsx");
+  it("records multiple exports declared in one statement", async () => {
+    const info = await analyzeOne("routes/multiple-vars.tsx");
 
     expect(info.exports.links?.declarationKind).toBe("arrow");
     expect(info.exports.meta?.declarationKind).toBe("arrow");
   });
 
-  it("collects outlets and exports from the same module", () => {
-    const info = analyzeOne("routes/outlet-and-loader.tsx");
+  it("collects outlets and exports from the same module", async () => {
+    const info = await analyzeOne("routes/outlet-and-loader.tsx");
 
     expect(info.outlets.length).toBeGreaterThan(0);
     expect(info.exports.loader).not.toBeNull();
   });
 
-  it("ignores outlets declared inside non-rendered nested helpers", () => {
-    const info = analyzeOne("routes/nested-helper-outlet.tsx");
+  it("ignores outlets declared inside non-rendered nested helpers", async () => {
+    const info = await analyzeOne("routes/nested-helper-outlet.tsx");
 
     expect(info.outlets).toEqual([]);
   });
 
-  it("collects outlets rendered through a non-exported local component", () => {
-    const info = analyzeOne("routes/local-component-outlet.tsx");
+  it("collects outlets rendered through a non-exported local component", async () => {
+    const info = await analyzeOne("routes/local-component-outlet.tsx");
 
     expect(info.outlets).toHaveLength(1);
   });
 
-  it("collects outlets from a local component whose name is also re-exported from another module", () => {
-    const info = analyzeOne("routes/reexport-name-shadow.tsx");
+  it("collects outlets from a local component whose name is also re-exported from another module", async () => {
+    const info = await analyzeOne("routes/reexport-name-shadow.tsx");
 
     expect(info.outlets).toHaveLength(1);
   });
 
-  it("collects outlets from a function-expression default export", () => {
-    const info = analyzeOne("routes/function-expression-default.tsx");
+  it("collects outlets from a function-expression default export", async () => {
+    const info = await analyzeOne("routes/function-expression-default.tsx");
 
     expect(info.outlets).toHaveLength(1);
   });
 
-  it("returns empty analysis for a missing file without throwing", () => {
-    const info = analyzeOne("routes/does-not-exist.tsx");
+  it("returns empty analysis with fileExists false for a missing file without throwing", async () => {
+    const info = await analyzeOne("routes/does-not-exist.tsx");
 
+    expect(info.fileExists).toBe(false);
     expect(info.outlets).toEqual([]);
     expect(info.unknownExports).toEqual([]);
     expect(info.exports.default).toBeNull();
     expect(info.exports.loader).toBeNull();
   });
 
-  it("captures a span that points at the declaration source", () => {
+  it("marks an analyzable module with fileExists true", async () => {
+    const info = await analyzeOne("routes/async-loader.tsx");
+
+    expect(info.fileExists).toBe(true);
+  });
+
+  it("captures a span that points at the declaration source", async () => {
     const file = "routes/async-loader.tsx";
-    const info = analyzeOne(file);
+    const info = await analyzeOne(file);
     const source = readFileSync(resolve(APP, file), "utf8");
 
     const span = info.exports.loader!.span;
     expect(source.slice(span.start, span.end)).toContain("export async function loader");
+  });
+});
+
+describe("analyzeRouteModules with a virtual filesystem", () => {
+  it("analyzes modules from an in-memory filesystem without touching disk", async () => {
+    const files = create({ moduleHooks: false });
+    await files.promises.mkdir("/routes", { recursive: true });
+    await files.promises.writeFile(
+      "/routes/home.tsx",
+      "export default function Home() {\n  return null;\n}\n",
+    );
+
+    const result = await analyzeRouteModules(
+      { appDirectory: "/virtual-app", routes: { home: { id: "home", file: "routes/home.tsx" } } },
+      files,
+    );
+
+    expect(result["home"]?.fileExists).toBe(true);
+    expect(result["home"]?.exports.default?.declarationKind).toBe("function");
+  });
+
+  it("marks routes whose module is absent from the filesystem as missing", async () => {
+    const files = create({ moduleHooks: false });
+
+    const result = await analyzeRouteModules(
+      { appDirectory: "/virtual-app", routes: { gone: { id: "gone", file: "routes/gone.tsx" } } },
+      files,
+    );
+
+    expect(result["gone"]?.fileExists).toBe(false);
+    expect(result["gone"]?.exports.default).toBeNull();
   });
 });

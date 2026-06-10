@@ -23,9 +23,14 @@ catalogs:
     vite-plus: 0.1.24
   prod:
     "@oxlint/plugins": 1.68.0
+    "@platformatic/vfs": 0.4.0
+    gunshi: 0.34.0
     oxc-parser: 0.134.0
     pathe: ^2.0.3
     type-fest: ^5.6.0
     valibot: 1.4.1
+
+minimumReleaseAgeExclude:
+  - gunshi@0.34.0
 
 saveExact: true

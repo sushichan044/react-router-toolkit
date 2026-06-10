@@ -1,7 +1,8 @@
-import { readFileSync } from "node:fs";
 import { resolve as resolvePath } from "node:path";
 
-import { parseSync } from "oxc-parser";
+import { create, RealFSProvider } from "@platformatic/vfs";
+import type { VirtualFileSystem } from "@platformatic/vfs";
+import { parse } from "oxc-parser";
 import type {
   Declaration,
   Expression,
@@ -17,153 +18,86 @@ import type {
   VariableDeclaration,
 } from "oxc-parser";
 
+// The data shapes produced here are defined as valibot schemas in `schemas.ts` (the schemas are
+// the source of truth; these types are inferred from them).
+import type {
+  ExportDeclarationKind,
+  OutletInfo,
+  RouteExportInfo,
+  RouteModuleExports,
+  RouteModuleInfo,
+  SourceSpan,
+  UnknownExportInfo,
+} from "./schemas";
 import type { ResolvedReactRouterConfig } from "./vendor/react-router/config/config";
-
-/** A character offset span (`[start, end)`) within the analyzed module's source text. */
-export interface SourceSpan {
-  start: number;
-  end: number;
-}
-
-/** The `satisfies` / `as` type annotation attached to an `<Outlet context={...}>` value. */
-export interface OutletContextTypeReference {
-  /** Source text of the type annotation (e.g. `"ShopContext"` or `"{ shopId: string }"`). */
-  text: string;
-  /** Location of the type annotation within the module. */
-  span: SourceSpan;
-  /**
-   * Set when `text` is a bare identifier naming a `type` alias declared in this same module, which
-   * is what lets a descendant route import the type from here. `null` otherwise (inline type,
-   * generic, qualified name, or a name declared elsewhere).
-   */
-  localTypeAlias: { exported: boolean; span: SourceSpan } | null;
-}
-
-/**
- * One `<Outlet>` rendered by a route module. Every Outlet is recorded — including those that pass
- * no `context` — because React Router resets outlet context to `undefined` at each Outlet, so a
- * child's context is decided solely by its immediate parent's Outlet, never an ancestor's.
- */
-export interface OutletInfo {
-  /** Location of the `<Outlet>` opening element. */
-  span: SourceSpan;
-  /** Whether the Outlet has a `context={...}` prop at all. `false` means it passes `undefined`. */
-  passesContext: boolean;
-  /** Whether the Outlet has spread attributes (`{...props}`), making its context indeterminate. */
-  hasSpread: boolean;
-  /** The `satisfies` / `as` annotation on the context value, or `null` when not annotated. */
-  annotation: { operator: "satisfies" | "as"; type: OutletContextTypeReference } | null;
-}
-
-/** How a route-module export is written in source. String union for JSON-serializability. */
-export type ExportDeclarationKind =
-  | "function" // `export function loader() {}` / `export default function C() {}`
-  | "class" // `export class C {}` / `export default class {}`
-  | "arrow" // `export const action = async () => {}`
-  | "variable" // `export const handle = { ... }` (init is not a function/class)
-  | "expression" // `export default someValue` / `export default 42`
-  | "reexport"; // `export { loader } from "./x"` / `export { x as loader }`
-
-/** Metadata for one recognized route-module export. A non-`null` slot means the export is present. */
-export interface RouteExportInfo {
-  /** Location of the export declaration (or the specifier, for re-exports). */
-  span: SourceSpan;
-  declarationKind: ExportDeclarationKind;
-  /** Whether the value is an `async` function or arrow. `false` for non-functions and re-exports. */
-  isAsync: boolean;
-  /** For `export { x } from "./mod"`, the `"./mod"` specifier. `null` otherwise. */
-  reexportSource: string | null;
-}
-
-/** `clientLoader`-specific metadata, additionally carrying its `hydrate` flag. */
-export interface ClientLoaderExportInfo extends RouteExportInfo {
-  /** Whether a top-level `clientLoader.hydrate = true` assignment is present. */
-  hydrate: boolean;
-}
-
-/** An export whose name is not a recognized route-module API (useful for typo detection). */
-export interface UnknownExportInfo extends RouteExportInfo {
-  /** The exported name (e.g. `"loaer"`). */
-  name: string;
-}
-
-/**
- * The recognized route-module exports. Each slot holds metadata when present and `null` when
- * absent, so consumers can check existence directly (e.g. `exports.loader !== null`).
- */
-export interface RouteModuleExports {
-  /** The route component. */
-  default: RouteExportInfo | null;
-  ErrorBoundary: RouteExportInfo | null;
-  HydrateFallback: RouteExportInfo | null;
-  loader: RouteExportInfo | null;
-  clientLoader: ClientLoaderExportInfo | null;
-  action: RouteExportInfo | null;
-  clientAction: RouteExportInfo | null;
-  middleware: RouteExportInfo | null;
-  clientMiddleware: RouteExportInfo | null;
-  headers: RouteExportInfo | null;
-  links: RouteExportInfo | null;
-  meta: RouteExportInfo | null;
-  handle: RouteExportInfo | null;
-  shouldRevalidate: RouteExportInfo | null;
-}
-
-/** Route manifest entry enriched with on-disk location, the outlets it renders, and its exports. */
-export interface RouteModuleInfo {
-  id: string;
-  parentId?: string;
-  /** Module path relative to the app directory, as in the route manifest. */
-  file: string;
-  /** Absolute path to the module on disk. */
-  physicalFile: string;
-  /** Every `<Outlet>` rendered by this module, in source order. */
-  outlets: OutletInfo[];
-  /** The recognized route-module exports, keyed by name; `null` slots are absent. */
-  exports: RouteModuleExports;
-  /** Top-level exports whose names are not recognized route-module APIs. */
-  unknownExports: UnknownExportInfo[];
-}
 
 /**
  * Analyze every route module's source and return manifest entries enriched with their physical
  * path, the outlets they render, and their recognized exports. This is pure syntax analysis (no
- * type checking).
+ * type checking). Modules are read and parsed concurrently, and a file registered under multiple
+ * route ids is read and parsed only once.
+ *
+ * `files` is a filesystem rooted at `resolved.appDirectory`; modules are read via their
+ * app-relative `file` path. It defaults to the real filesystem — pass a `MemoryProvider`-backed VFS
+ * to analyze sources in tests without touching disk.
  */
-export function analyzeRouteModules(
+export async function analyzeRouteModules(
   resolved: Pick<ResolvedReactRouterConfig, "appDirectory" | "routes">,
-): Record<string, RouteModuleInfo> {
-  const result: Record<string, RouteModuleInfo> = {};
-  for (const entry of Object.values(resolved.routes)) {
-    const physicalFile = resolvePath(resolved.appDirectory, entry.file);
-    const analysis = analyzeModuleFile(physicalFile);
-    result[entry.id] = {
-      id: entry.id,
-      ...(entry.parentId === undefined ? {} : { parentId: entry.parentId }),
-      file: entry.file,
-      physicalFile,
-      outlets: analysis.outlets,
-      exports: analysis.exports,
-      unknownExports: analysis.unknownExports,
-    };
-  }
-  return result;
+  files: VirtualFileSystem = create(new RealFSProvider(resolved.appDirectory), {
+    moduleHooks: false,
+  }),
+): Promise<Record<string, RouteModuleInfo>> {
+  const analyses = new Map<string, Promise<ModuleAnalysis>>();
+  const analyzeOnce = (file: string, physicalFile: string): Promise<ModuleAnalysis> => {
+    let analysis = analyses.get(physicalFile);
+    if (analysis === undefined) {
+      analysis = analyzeModuleFile(files, file, physicalFile);
+      analyses.set(physicalFile, analysis);
+    }
+    return analysis;
+  };
+
+  const entries = await Promise.all(
+    Object.values(resolved.routes).map(async (entry): Promise<[string, RouteModuleInfo]> => {
+      const physicalFile = resolvePath(resolved.appDirectory, entry.file);
+      const analysis = await analyzeOnce(entry.file, physicalFile);
+      return [
+        entry.id,
+        {
+          id: entry.id,
+          ...(entry.parentId === undefined ? {} : { parentId: entry.parentId }),
+          file: entry.file,
+          physicalFile,
+          fileExists: analysis.fileExists,
+          outlets: analysis.outlets,
+          exports: analysis.exports,
+          unknownExports: analysis.unknownExports,
+        },
+      ];
+    }),
+  );
+  return Object.fromEntries(entries);
 }
 
 interface ModuleAnalysis {
+  fileExists: boolean;
   outlets: OutletInfo[];
   exports: RouteModuleExports;
   unknownExports: UnknownExportInfo[];
 }
 
-function analyzeModuleFile(physicalFile: string): ModuleAnalysis {
+async function analyzeModuleFile(
+  files: VirtualFileSystem,
+  file: string,
+  physicalFile: string,
+): Promise<ModuleAnalysis> {
   let source: string;
   try {
-    source = readFileSync(physicalFile, "utf8");
+    source = await files.promises.readFile(`/${file}`, "utf8");
   } catch {
-    return { outlets: [], exports: emptyExports(), unknownExports: [] };
+    return { fileExists: false, outlets: [], exports: emptyExports(), unknownExports: [] };
   }
-  const { program } = parseSync(physicalFile, source);
+  const { program } = await parse(physicalFile, source);
 
   // A single pass over the module's top level classifies the exports (for `RouteModuleExports`) and
   // collects what the outlet walk needs (Outlet bindings, local components, exported names, and the
@@ -176,7 +110,7 @@ function analyzeModuleFile(physicalFile: string): ModuleAnalysis {
       ? collectOutlets(defaultDeclaration, source, scope)
       : [];
 
-  return { outlets, exports, unknownExports };
+  return { fileExists: true, outlets, exports, unknownExports };
 }
 
 const RECOGNIZED_EXPORT_NAMES = new Set<keyof RouteModuleExports>([
@@ -270,15 +204,18 @@ function collectModule(program: Program): CollectedModule {
         }
         break;
       }
-      case "TSTypeAliasDeclaration":
+      case "TSTypeAliasDeclaration": {
         scope.localAliases.set(statement.id.name, { start: statement.start, end: statement.end });
         break;
-      case "FunctionDeclaration":
+      }
+      case "FunctionDeclaration": {
         registerComponent(scope, statement.id?.name, statement.body);
         break;
-      case "VariableDeclaration":
+      }
+      case "VariableDeclaration": {
         registerVariableComponents(scope, statement);
         break;
+      }
       case "ExportDefaultDeclaration": {
         defaultDeclaration = statement.declaration;
         const { declarationKind, isAsync } = classifyDefaultExport(statement.declaration);
@@ -311,7 +248,7 @@ function collectModule(program: Program): CollectedModule {
         }
         break;
       }
-      case "ExportAllDeclaration":
+      case "ExportAllDeclaration": {
         // `export * as ns from "./x"`. Bare `export * from "./x"` has no name and is skipped.
         if (statement.exported !== null) {
           record(moduleExportName(statement.exported), {
@@ -322,11 +259,13 @@ function collectModule(program: Program): CollectedModule {
           });
         }
         break;
-      case "ExpressionStatement":
+      }
+      case "ExpressionStatement": {
         if (isClientLoaderHydrateAssignment(statement)) {
           clientLoaderHydrate = true;
         }
         break;
+      }
     }
   }
 
@@ -382,15 +321,19 @@ function classifyDefaultExport(declaration: ExportDefaultDeclaration["declaratio
 } {
   switch (declaration.type) {
     case "FunctionDeclaration":
-    case "FunctionExpression":
+    case "FunctionExpression": {
       return { declarationKind: "function", isAsync: declaration.async };
+    }
     case "ClassDeclaration":
-    case "ClassExpression":
+    case "ClassExpression": {
       return { declarationKind: "class", isAsync: false };
-    case "ArrowFunctionExpression":
+    }
+    case "ArrowFunctionExpression": {
       return { declarationKind: "arrow", isAsync: declaration.async };
-    default:
+    }
+    default: {
       return { declarationKind: "expression", isAsync: false };
+    }
   }
 }
 
@@ -402,14 +345,18 @@ function classifyInit(init: Expression | null): {
     return { declarationKind: "variable", isAsync: false };
   }
   switch (init.type) {
-    case "ArrowFunctionExpression":
+    case "ArrowFunctionExpression": {
       return { declarationKind: "arrow", isAsync: init.async };
-    case "FunctionExpression":
+    }
+    case "FunctionExpression": {
       return { declarationKind: "function", isAsync: init.async };
-    case "ClassExpression":
+    }
+    case "ClassExpression": {
       return { declarationKind: "class", isAsync: false };
-    default:
+    }
+    default: {
       return { declarationKind: "variable", isAsync: false };
+    }
   }
 }
 

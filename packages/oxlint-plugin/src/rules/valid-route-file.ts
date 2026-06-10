@@ -1,5 +1,4 @@
-import { existsSync } from "node:fs";
-import { relative as relativePath, resolve as resolvePath } from "node:path";
+import { relative as relativePath } from "node:path";
 
 import { defineRule } from "@oxlint/plugins";
 import type { ESTree, Settings } from "@oxlint/plugins";
@@ -74,7 +73,6 @@ const validRouteFile = defineRule({
           return;
         }
 
-        // routes.ts must have a default export
         if (exportDefaultNode === null) {
           context.report({
             loc: { line: 1, column: 0 },
@@ -83,38 +81,30 @@ const validRouteFile = defineRule({
           return;
         }
 
-        const { root } = settings;
-        const { appDirectory, routes } = settings.resolvedSettings;
+        const { root, routeModules } = settings;
 
-        // The resolved manifest is the source of truth, so every route module is checked regardless
+        // The analyzed manifest is the source of truth, so every route module is checked regardless
         // of how it was declared (literal path, `relative()`, fs-routes, composed arrays, ...). The
         // syntactic origin of each path is not recoverable in those cases, so all findings are
         // reported on the `export default` keyword. Narrowing to the keyword (rather than the whole
         // declaration) keeps the squiggle off the entire route array, which can span the file.
-        const declaredFiles = [
-          ...new Set(
-            Object.values(routes)
-              .filter((entry) => entry.id !== "root")
-              .map((entry) => entry.file),
-          ),
-        ];
-
-        // Avoid reporting on the whole export default node.
-        // If we do so, users will see the error on the entire routes array, and it is very uncomfortable experiencing in the IDEs.
         const reportLoc = {
           start: exportDefaultNode.loc.start,
           end: exportDefaultNode.declaration.loc.start,
         };
 
-        for (const file of declaredFiles) {
-          const resolved = resolvePath(appDirectory, file);
-          if (existsSync(resolved)) {
+        // File existence was determined at setup time (`analyzeRouteModules`); rules never touch
+        // the filesystem. Several route ids can register the same file, so report each file once.
+        const reportedFiles = new Set<string>();
+        for (const entry of Object.values(routeModules)) {
+          if (entry.id === "root" || entry.fileExists || reportedFiles.has(entry.physicalFile)) {
             continue;
           }
+          reportedFiles.add(entry.physicalFile);
           context.report({
             loc: reportLoc,
             messageId: "missingRouteFile",
-            data: { file, resolved: relativePath(root, resolved) },
+            data: { file: entry.file, resolved: relativePath(root, entry.physicalFile) },
           });
         }
       },
