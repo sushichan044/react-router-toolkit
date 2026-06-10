@@ -51,11 +51,6 @@ const VALID = {
       },
       unknownExports: [],
     },
-    serverBuildFile: "index.js",
-    serverModuleFormat: "esm",
-    ssr: true,
-    subResourceIntegrity: false,
-    allowedActionOrigins: false,
   },
 };
 
