@@ -3,9 +3,11 @@ export { loadRoutes } from "./loaders/routes";
 export { buildRouteManifest } from "./loaders/manifest";
 export { resolveReactRouterConfig } from "./resolve";
 export { analyzeRouteModules } from "./route-module-info";
+export { resolvedReactRouterConfigSchema, routeModuleInfoSchema } from "./schemas";
 export type {
   ClientLoaderExportInfo,
   ExportDeclarationKind,
+  JsonSafeResolvedReactRouterConfig,
   OutletContextTypeReference,
   OutletInfo,
   RouteExportInfo,
@@ -13,7 +15,7 @@ export type {
   RouteModuleInfo,
   SourceSpan,
   UnknownExportInfo,
-} from "./route-module-info";
+} from "./schemas";
 export { flattenRouteTree } from "./route-tree";
 export type { RouteLayoutInfo, RouteLayoutMap } from "./route-tree";
 
