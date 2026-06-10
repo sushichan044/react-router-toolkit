@@ -8,7 +8,7 @@ export default defineConfig({
       dts: {
         tsgo: true,
       },
-      entry: ["src/index.ts"],
+      entry: ["src/index.ts", "src/cli.ts"],
       fixedExtension: true,
       format: "esm",
       fromVite: true,

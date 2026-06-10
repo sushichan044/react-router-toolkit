@@ -18,6 +18,14 @@ export type {
 } from "./schemas";
 export { flattenRouteTree } from "./route-tree";
 export type { RouteLayoutInfo, RouteLayoutMap } from "./route-tree";
+// The typegen pipeline itself (computeTypegenTargets / writeTypegenFiles / createProjectFiles) is
+// internal to the `react-router-toolkit typegen` CLI; only the pieces lint rules need are public.
+export {
+  classifyModuleOutletContext,
+  NEAREST_OUTLET_CONTEXT_TYPE,
+  toolkitTypesSpecifier,
+} from "./typegen";
+export type { ModuleOutletContext } from "./typegen";
 
 // Public types re-exported from the vendored React Router internals (see src/vendor/react-router).
 // These are not yet part of @react-router/dev's public API; when they become public, switch the
