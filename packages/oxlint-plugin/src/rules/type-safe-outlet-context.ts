@@ -15,6 +15,7 @@ type MessageIds =
   | "outletContextTypeNotLocal"
   | "outletContextTypeNotExported"
   | "outletSpreadAttribute"
+  | "outletInExportedComponent"
   // Child role: a route calls `useOutletContext()`.
   | "missingOutletContextType"
   | "outdatedOutletContextType"
@@ -38,6 +39,8 @@ const typeSafeOutletContext = defineRule({
         "Extract the outlet context type into an exported type alias in this module and reference it with `satisfies`.",
       outletSpreadAttribute:
         "Do not spread attributes onto <Outlet>; pass `context` explicitly with `satisfies <ExportedType>` so descendant routes can infer it.",
+      outletInExportedComponent:
+        "Render <Outlet> from this route's default export (or a non-exported local component it renders), not from an exported component. React Router renders the default export, so an Outlet in an exported component does not pass context to descendant routes.",
       outletContextTypeNotLocal:
         'Type "{{name}}" must be a type alias defined in this module so descendant routes can import it from here.',
       outletContextTypeNotExported:
@@ -60,13 +63,11 @@ const typeSafeOutletContext = defineRule({
     let selfInfo: RouteModuleInfo | undefined;
     let parentInfo: RouteModuleInfo | undefined;
 
-    // Parent role: collected from this file's own AST.
-    let outletDirectNames = new Set<string>();
-    let outletNamespaceNames = new Set<string>();
+    // Parent role: collected from this file's own AST. The set of <Outlet>s is derived at
+    // `Program:exit` from the whole program (see `classifyOutlets`), so we only collect the type
+    // aliases needed to validate `satisfies <ExportedType>` annotations here.
     let localTypeAliases = new Map<string, ESTree.TSTypeAliasDeclaration>();
     let exportedNames = new Set<string>();
-    let contextProps: { attr: ESTree.JSXAttribute; expr: ESTree.Expression | null }[] = [];
-    let outletSpreads: ESTree.JSXSpreadAttribute[] = [];
 
     // Child role.
     let useOutletContextNames = new Set<string>();
@@ -78,12 +79,8 @@ const typeSafeOutletContext = defineRule({
       before: () => {
         selfInfo = undefined;
         parentInfo = undefined;
-        outletDirectNames = new Set();
-        outletNamespaceNames = new Set();
         localTypeAliases = new Map();
         exportedNames = new Set();
-        contextProps = [];
-        outletSpreads = [];
         useOutletContextNames = new Set();
         knownNames = new Set();
         calls = [];
@@ -112,26 +109,13 @@ const typeSafeOutletContext = defineRule({
         const source = node.source.value;
         for (const specifier of node.specifiers) {
           knownNames.add(specifier.local.name);
-          if (specifier.type === "ImportNamespaceSpecifier") {
-            if (source === "react-router" || source === "react-router-dom") {
-              outletNamespaceNames.add(specifier.local.name);
-            }
-          } else if (
+          if (
             specifier.type === "ImportSpecifier" &&
-            specifier.imported.type === "Identifier"
+            specifier.imported.type === "Identifier" &&
+            (source === "react-router" || source === "react-router-dom") &&
+            specifier.imported.name === "useOutletContext"
           ) {
-            if (
-              (source === "react-router" || source === "react-router-dom") &&
-              specifier.imported.name === "Outlet"
-            ) {
-              outletDirectNames.add(specifier.local.name);
-            }
-            if (
-              (source === "react-router" || source === "react-router-dom") &&
-              specifier.imported.name === "useOutletContext"
-            ) {
-              useOutletContextNames.add(specifier.local.name);
-            }
+            useOutletContextNames.add(specifier.local.name);
           }
         }
       },
@@ -156,29 +140,6 @@ const typeSafeOutletContext = defineRule({
         }
       },
 
-      JSXOpeningElement: (node) => {
-        if (!isOutletName(node.name, outletDirectNames, outletNamespaceNames)) {
-          return;
-        }
-        for (const attribute of node.attributes) {
-          if (attribute.type === "JSXSpreadAttribute") {
-            outletSpreads.push(attribute);
-            continue;
-          }
-          if (attribute.name.type !== "JSXIdentifier" || attribute.name.name !== "context") {
-            continue;
-          }
-          const value = attribute.value;
-          const expr =
-            value !== null &&
-            value.type === "JSXExpressionContainer" &&
-            value.expression.type !== "JSXEmptyExpression"
-              ? value.expression
-              : null;
-          contextProps.push({ attr: attribute, expr });
-        }
-      },
-
       CallExpression: (node) => {
         if (node.callee.type === "Identifier" && useOutletContextNames.has(node.callee.name)) {
           calls.push(node);
@@ -189,7 +150,8 @@ const typeSafeOutletContext = defineRule({
         if (selfInfo === undefined) {
           return;
         }
-        reportParentRole(context, contextProps, outletSpreads, localTypeAliases, exportedNames);
+        const { reachable, exportedComponent } = classifyOutlets(context.sourceCode.ast);
+        reportParentRole(context, reachable, exportedComponent, localTypeAliases, exportedNames);
         reportChildRole(context, parentInfo, calls, knownNames, lastImport);
       },
     };
@@ -200,16 +162,42 @@ const typeSafeOutletContext = defineRule({
 // alias>` is an error the developer must fix by hand. We deliberately do not auto-fix here —
 // silently adding `export` (or rewriting `as` to `satisfies`) changes a module's public surface or
 // type semantics, which is too invasive for a lint fix.
+//
+// `reachableOutlets` are the <Outlet>s the route actually renders (validated below);
+// `exportedComponentOutlets` are <Outlet>s declared in exported (non-default) components — they
+// never pass context to children, so they are flagged outright.
 function reportParentRole(
   context: Context,
-  contextProps: { attr: ESTree.JSXAttribute; expr: ESTree.Expression | null }[],
-  outletSpreads: ESTree.JSXSpreadAttribute[],
+  reachableOutlets: readonly ESTree.JSXOpeningElement[],
+  exportedComponentOutlets: readonly ESTree.JSXOpeningElement[],
   localTypeAliases: ReadonlyMap<string, ESTree.TSTypeAliasDeclaration>,
   exportedNames: ReadonlySet<string>,
 ): void {
-  for (const spread of outletSpreads) {
-    context.report({ node: spread, messageId: "outletSpreadAttribute" });
+  for (const outlet of exportedComponentOutlets) {
+    context.report({ node: outlet, messageId: "outletInExportedComponent" });
   }
+
+  const contextProps: { attr: ESTree.JSXAttribute; expr: ESTree.Expression | null }[] = [];
+  for (const outlet of reachableOutlets) {
+    for (const attribute of outlet.attributes) {
+      if (attribute.type === "JSXSpreadAttribute") {
+        context.report({ node: attribute, messageId: "outletSpreadAttribute" });
+        continue;
+      }
+      if (attribute.name.type !== "JSXIdentifier" || attribute.name.name !== "context") {
+        continue;
+      }
+      const value = attribute.value;
+      const expr =
+        value !== null &&
+        value.type === "JSXExpressionContainer" &&
+        value.expression.type !== "JSXEmptyExpression"
+          ? value.expression
+          : null;
+      contextProps.push({ attr: attribute, expr });
+    }
+  }
+
   for (const { attr, expr } of contextProps) {
     if (expr === null) {
       context.report({ node: attr, messageId: "missingOutletContextAnnotation" });
@@ -352,6 +340,247 @@ function reportChildRole(
         return fixes;
       },
     });
+  }
+}
+
+/**
+ * Classify every `<Outlet>` in the module by where it is rendered. React Router renders a module's
+ * default export as the route component, so context only reaches descendant routes when the Outlet
+ * is reached from the default export — directly, or through a non-exported local component it
+ * renders. This mirrors `analyzeRouteModules` in `react-router-toolkit` (which classifies the same
+ * way for descendant routes); keep the two in sync.
+ *
+ * - `reachable`: rendered by the default export ⇒ validated as a context provider.
+ * - `exportedComponent`: declared in an exported (non-default) component ⇒ never passes context, so
+ *   reported as a misuse.
+ *
+ * Outlets in unreachable local components are intentionally omitted (dead code we make no claim
+ * about).
+ */
+function classifyOutlets(program: ESTree.Program): {
+  reachable: ESTree.JSXOpeningElement[];
+  exportedComponent: ESTree.JSXOpeningElement[];
+} {
+  const scope = collectRuleScope(program);
+  if (scope.outletDirect.size === 0 && scope.outletNamespaces.size === 0) {
+    return { reachable: [], exportedComponent: [] };
+  }
+
+  const reachable: ESTree.JSXOpeningElement[] = [];
+  const defaultBody = findDefaultExportBody(program, scope);
+  if (defaultBody !== null) {
+    collectReachableOutlets(defaultBody, scope, new Set(), reachable);
+  }
+
+  const reachableSet = new Set(reachable);
+  const exportedComponent: ESTree.JSXOpeningElement[] = [];
+  for (const [name, body] of scope.localComponents) {
+    if (!scope.exportedNames.has(name)) {
+      continue;
+    }
+    walk(body, (node) => {
+      if (
+        node.type === "JSXOpeningElement" &&
+        isOutletName(node.name, scope.outletDirect, scope.outletNamespaces) &&
+        !reachableSet.has(node)
+      ) {
+        exportedComponent.push(node);
+      }
+    });
+  }
+  return { reachable, exportedComponent };
+}
+
+/** The body of a component function: a block statement, or an arrow's expression body. */
+type ComponentBody = ESTree.FunctionBody | ESTree.Expression;
+
+interface RuleScope {
+  readonly outletDirect: Set<string>;
+  readonly outletNamespaces: Set<string>;
+  readonly exportedNames: Set<string>;
+  readonly localComponents: Map<string, ComponentBody>;
+}
+
+function collectRuleScope(program: ESTree.Program): RuleScope {
+  const scope: RuleScope = {
+    outletDirect: new Set(),
+    outletNamespaces: new Set(),
+    exportedNames: new Set(),
+    localComponents: new Map(),
+  };
+
+  for (const statement of program.body) {
+    if (statement.type === "ImportDeclaration") {
+      const source = statement.source.value;
+      if (source !== "react-router" && source !== "react-router-dom") {
+        continue;
+      }
+      for (const specifier of statement.specifiers) {
+        if (specifier.type === "ImportNamespaceSpecifier") {
+          scope.outletNamespaces.add(specifier.local.name);
+        } else if (
+          specifier.type === "ImportSpecifier" &&
+          specifier.imported.type === "Identifier" &&
+          specifier.imported.name === "Outlet"
+        ) {
+          scope.outletDirect.add(specifier.local.name);
+        }
+      }
+    } else if (statement.type === "FunctionDeclaration") {
+      registerComponent(scope, statement.id?.name, statement.body);
+    } else if (statement.type === "VariableDeclaration") {
+      registerVariableComponents(scope, statement);
+    } else if (statement.type === "ExportNamedDeclaration") {
+      const declaration = statement.declaration;
+      if (declaration?.type === "FunctionDeclaration") {
+        if (declaration.id !== null) {
+          scope.exportedNames.add(declaration.id.name);
+        }
+        registerComponent(scope, declaration.id?.name, declaration.body);
+      } else if (declaration?.type === "VariableDeclaration") {
+        for (const declarator of declaration.declarations) {
+          if (declarator.id.type === "Identifier") {
+            scope.exportedNames.add(declarator.id.name);
+          }
+        }
+        registerVariableComponents(scope, declaration);
+      }
+      for (const specifier of statement.specifiers) {
+        if (specifier.local.type === "Identifier") {
+          scope.exportedNames.add(specifier.local.name);
+        }
+      }
+    }
+  }
+  return scope;
+}
+
+function registerComponent(
+  scope: RuleScope,
+  name: string | undefined,
+  body: ESTree.FunctionBody | null,
+): void {
+  if (name !== undefined && body !== null) {
+    scope.localComponents.set(name, body);
+  }
+}
+
+function registerVariableComponents(
+  scope: RuleScope,
+  declaration: ESTree.VariableDeclaration,
+): void {
+  for (const declarator of declaration.declarations) {
+    if (declarator.id.type !== "Identifier" || declarator.init === null) {
+      continue;
+    }
+    const init = declarator.init;
+    if (
+      (init.type === "ArrowFunctionExpression" || init.type === "FunctionExpression") &&
+      init.body !== null
+    ) {
+      scope.localComponents.set(declarator.id.name, init.body);
+    }
+  }
+}
+
+function findDefaultExportBody(program: ESTree.Program, scope: RuleScope): ComponentBody | null {
+  for (const statement of program.body) {
+    if (statement.type !== "ExportDefaultDeclaration") {
+      continue;
+    }
+    const declaration = statement.declaration;
+    if (
+      declaration.type === "FunctionDeclaration" ||
+      declaration.type === "FunctionExpression" ||
+      declaration.type === "ArrowFunctionExpression"
+    ) {
+      return declaration.body;
+    }
+    if (declaration.type === "Identifier") {
+      return scope.localComponents.get(declaration.name) ?? null;
+    }
+    return null;
+  }
+  return null;
+}
+
+function collectReachableOutlets(
+  body: ComponentBody,
+  scope: RuleScope,
+  visited: Set<string>,
+  out: ESTree.JSXOpeningElement[],
+): void {
+  walkReachableBody(body, (node) => {
+    if (node.type !== "JSXOpeningElement") {
+      return;
+    }
+    if (isOutletName(node.name, scope.outletDirect, scope.outletNamespaces)) {
+      out.push(node);
+      return;
+    }
+    if (node.name.type !== "JSXIdentifier") {
+      return;
+    }
+    const name = node.name.name;
+    if (scope.localComponents.has(name) && !scope.exportedNames.has(name) && !visited.has(name)) {
+      visited.add(name);
+      collectReachableOutlets(scope.localComponents.get(name)!, scope, visited, out);
+    }
+  });
+}
+
+function walkReachableBody(node: unknown, visit: (node: ESTree.Node) => void): void {
+  if (Array.isArray(node)) {
+    for (const item of node) {
+      walkReachableBody(item, visit);
+    }
+    return;
+  }
+  if (node === null || typeof node !== "object") {
+    return;
+  }
+  if (typeof (node as { type?: unknown }).type === "string") {
+    const astNode = node as ESTree.Node;
+    if (isFunctionOrClassNode(astNode)) {
+      return;
+    }
+    visit(astNode);
+  }
+  for (const [key, value] of Object.entries(node)) {
+    if (key !== "parent") {
+      walkReachableBody(value, visit);
+    }
+  }
+}
+
+function isFunctionOrClassNode(node: ESTree.Node): boolean {
+  return (
+    node.type === "FunctionDeclaration" ||
+    node.type === "FunctionExpression" ||
+    node.type === "ArrowFunctionExpression" ||
+    node.type === "ClassDeclaration" ||
+    node.type === "ClassExpression"
+  );
+}
+
+/** Depth-first walk over the AST, skipping `parent` back-references to avoid cycles. */
+function walk(node: unknown, visit: (node: ESTree.Node) => void): void {
+  if (Array.isArray(node)) {
+    for (const item of node) {
+      walk(item, visit);
+    }
+    return;
+  }
+  if (node === null || typeof node !== "object") {
+    return;
+  }
+  if (typeof (node as { type?: unknown }).type === "string") {
+    visit(node as ESTree.Node);
+  }
+  for (const [key, value] of Object.entries(node)) {
+    if (key !== "parent") {
+      walk(value, visit);
+    }
   }
 }
 

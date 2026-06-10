@@ -6,12 +6,15 @@ import type {
   Declaration,
   Expression,
   ExportDefaultDeclaration,
+  Function as FunctionNode,
+  FunctionBody,
   JSXAttribute,
   JSXOpeningElement,
   ModuleExportName,
   Node,
   Program,
   Statement,
+  VariableDeclaration,
 } from "oxc-parser";
 
 import type { ResolvedReactRouterConfig } from "./vendor/react-router/config/config";
@@ -162,12 +165,15 @@ function analyzeModuleFile(physicalFile: string): ModuleAnalysis {
   }
   const { program } = parseSync(physicalFile, source);
 
-  const scope = collectModuleScope(program);
-  const { exports, unknownExports } = extractExports(program);
+  // A single pass over the module's top level classifies the exports (for `RouteModuleExports`) and
+  // collects what the outlet walk needs (Outlet bindings, local components, exported names, and the
+  // default export's declaration). Both views come from the same traversal, so "what is exported"
+  // and "where is the default export" are decided once.
+  const { scope, exports, unknownExports, defaultDeclaration } = collectModule(program);
   // Keep the JSX walk fast-path: only traverse the full tree when an Outlet binding exists.
   const outlets =
     scope.outletDirect.size > 0 || scope.outletNamespaces.size > 0
-      ? collectOutlets(program, source, scope)
+      ? collectOutlets(defaultDeclaration, source, scope)
       : [];
 
   return { outlets, exports, unknownExports };
@@ -209,13 +215,32 @@ function emptyExports(): RouteModuleExports {
   };
 }
 
-function extractExports(program: Program): {
+interface CollectedModule {
+  scope: ModuleScope;
   exports: RouteModuleExports;
   unknownExports: UnknownExportInfo[];
-} {
+  /** The default export's declaration node, used to resolve the route component's body. */
+  defaultDeclaration: ExportDefaultDeclaration["declaration"] | null;
+}
+
+/**
+ * Walk the module's top-level statements once, deriving both the recognized exports (for
+ * `RouteModuleExports`) and the scope the outlet walk needs. The export classification is the
+ * single source of truth for which names are exported and which declaration is the default, so the
+ * outlet walk reuses it instead of re-scanning the program.
+ */
+function collectModule(program: Program): CollectedModule {
+  const scope: ModuleScope = {
+    outletDirect: new Set(),
+    outletNamespaces: new Set(),
+    localAliases: new Map(),
+    exportedNames: new Set(),
+    localComponents: new Map(),
+  };
   const recognized = new Map<keyof RouteModuleExports, RouteExportInfo>();
   const unknownExports: UnknownExportInfo[] = [];
   let clientLoaderHydrate = false;
+  let defaultDeclaration: ExportDefaultDeclaration["declaration"] | null = null;
 
   const record = (name: string, info: RouteExportInfo) => {
     if (RECOGNIZED_EXPORT_NAMES.has(name as keyof RouteModuleExports)) {
@@ -226,39 +251,82 @@ function extractExports(program: Program): {
   };
 
   for (const statement of program.body as Statement[]) {
-    if (statement.type === "ExportDefaultDeclaration") {
-      const { declarationKind, isAsync } = classifyDefaultExport(statement.declaration);
-      record("default", {
-        span: { start: statement.start, end: statement.end },
-        declarationKind,
-        isAsync,
-        reexportSource: null,
-      });
-    } else if (statement.type === "ExportNamedDeclaration") {
-      const span = { start: statement.start, end: statement.end };
-      if (statement.declaration !== null) {
-        recordDeclarationExports(statement.declaration, span, record);
-      } else {
-        const reexportSource = statement.source === null ? null : statement.source.value;
+    switch (statement.type) {
+      case "ImportDeclaration": {
+        const source = statement.source.value;
+        if (source !== "react-router" && source !== "react-router-dom") {
+          break;
+        }
         for (const specifier of statement.specifiers) {
-          record(moduleExportName(specifier.exported), {
-            span: { start: specifier.start, end: specifier.end },
+          if (specifier.type === "ImportNamespaceSpecifier") {
+            scope.outletNamespaces.add(specifier.local.name);
+          } else if (
+            specifier.type === "ImportSpecifier" &&
+            specifier.imported.type === "Identifier" &&
+            specifier.imported.name === "Outlet"
+          ) {
+            scope.outletDirect.add(specifier.local.name);
+          }
+        }
+        break;
+      }
+      case "TSTypeAliasDeclaration":
+        scope.localAliases.set(statement.id.name, { start: statement.start, end: statement.end });
+        break;
+      case "FunctionDeclaration":
+        registerComponent(scope, statement.id?.name, statement.body);
+        break;
+      case "VariableDeclaration":
+        registerVariableComponents(scope, statement);
+        break;
+      case "ExportDefaultDeclaration": {
+        defaultDeclaration = statement.declaration;
+        const { declarationKind, isAsync } = classifyDefaultExport(statement.declaration);
+        record("default", {
+          span: { start: statement.start, end: statement.end },
+          declarationKind,
+          isAsync,
+          reexportSource: null,
+        });
+        break;
+      }
+      case "ExportNamedDeclaration": {
+        const span = { start: statement.start, end: statement.end };
+        if (statement.declaration !== null) {
+          recordDeclarationExports(statement.declaration, span, record);
+          registerExportedDeclaration(scope, statement.declaration);
+        } else {
+          const reexportSource = statement.source === null ? null : statement.source.value;
+          for (const specifier of statement.specifiers) {
+            record(moduleExportName(specifier.exported), {
+              span: { start: specifier.start, end: specifier.end },
+              declarationKind: "reexport",
+              isAsync: false,
+              reexportSource,
+            });
+            if (statement.source === null && specifier.local.type === "Identifier") {
+              scope.exportedNames.add(specifier.local.name);
+            }
+          }
+        }
+        break;
+      }
+      case "ExportAllDeclaration":
+        // `export * as ns from "./x"`. Bare `export * from "./x"` has no name and is skipped.
+        if (statement.exported !== null) {
+          record(moduleExportName(statement.exported), {
+            span: { start: statement.start, end: statement.end },
             declarationKind: "reexport",
             isAsync: false,
-            reexportSource,
+            reexportSource: statement.source.value,
           });
         }
-      }
-    } else if (statement.type === "ExportAllDeclaration" && statement.exported !== null) {
-      // `export * as ns from "./x"`. Bare `export * from "./x"` has no name and is skipped.
-      record(moduleExportName(statement.exported), {
-        span: { start: statement.start, end: statement.end },
-        declarationKind: "reexport",
-        isAsync: false,
-        reexportSource: statement.source.value,
-      });
-    } else if (isClientLoaderHydrateAssignment(statement)) {
-      clientLoaderHydrate = true;
+        break;
+      case "ExpressionStatement":
+        if (isClientLoaderHydrateAssignment(statement)) {
+          clientLoaderHydrate = true;
+        }
+        break;
     }
   }
 
@@ -270,7 +338,7 @@ function extractExports(program: Program): {
       exports[name] = info;
     }
   }
-  return { exports, unknownExports };
+  return { scope, exports, unknownExports, defaultDeclaration };
 }
 
 function recordDeclarationExports(
@@ -379,67 +447,201 @@ function moduleExportName(name: ModuleExportName): string {
   return name.type === "Identifier" ? name.name : name.value;
 }
 
+/** The body of a component function: a block statement, or an arrow's expression body. */
+type ComponentBody = FunctionBody | Expression;
+
 interface ModuleScope {
   readonly outletDirect: Set<string>;
   readonly outletNamespaces: Set<string>;
   readonly localAliases: Map<string, SourceSpan>;
   readonly exportedNames: Set<string>;
+  /**
+   * Top-level component declarations keyed by their local name (function declarations and `const X
+   * = () => …` / `const X = function () {…}`), mapped to their function body. Used to follow a
+   * route's render tree from its default export into local helper components.
+   */
+  readonly localComponents: Map<string, ComponentBody>;
 }
 
-function collectOutlets(program: Program, source: string, scope: ModuleScope): OutletInfo[] {
+/**
+ * Collect only the `<Outlet>`s that the route actually renders. React Router renders a module's
+ * default export as the route component, so an Outlet belongs to the route only when it is reached
+ * from the default export — either directly, or through a non-exported local component the default
+ * export renders. Outlets declared in exported (non-default) components or in unreachable local
+ * components are intentionally ignored here; they do not pass context to child routes.
+ */
+function collectOutlets(
+  defaultDeclaration: ExportDefaultDeclaration["declaration"] | null,
+  source: string,
+  scope: ModuleScope,
+): OutletInfo[] {
+  const defaultExportBody = resolveDefaultExportBody(defaultDeclaration, scope);
+  if (defaultExportBody === null) {
+    // No analyzable default export (anonymous re-export, HOC wrapper, class, etc.). Be conservative
+    // and claim no outlets rather than guess from unreachable code.
+    return [];
+  }
+  return collectReachableOutlets(defaultExportBody, source, scope, new Set());
+}
+
+/**
+ * Record the scope facts carried by an exported declaration: its name is exported (so the outlet
+ * walk will not follow it as a local component), and a declared component or type alias is
+ * registered. Re-export specifiers are handled by the caller, which has the local name.
+ */
+function registerExportedDeclaration(scope: ModuleScope, declaration: Declaration): void {
+  if (declaration.type === "TSTypeAliasDeclaration") {
+    scope.localAliases.set(declaration.id.name, {
+      start: declaration.start,
+      end: declaration.end,
+    });
+    scope.exportedNames.add(declaration.id.name);
+  } else if (declaration.type === "FunctionDeclaration") {
+    if (declaration.id !== null) {
+      scope.exportedNames.add(declaration.id.name);
+    }
+    registerComponent(scope, declaration.id?.name, declaration.body);
+  } else if (declaration.type === "VariableDeclaration") {
+    for (const declarator of declaration.declarations) {
+      if (declarator.id.type === "Identifier") {
+        scope.exportedNames.add(declarator.id.name);
+      }
+    }
+    registerVariableComponents(scope, declaration);
+  }
+}
+
+/** Record a named function declaration as a local component, when it has a body. */
+function registerComponent(
+  scope: ModuleScope,
+  name: string | undefined,
+  body: FunctionBody | null,
+): void {
+  if (name !== undefined && body !== null) {
+    scope.localComponents.set(name, body);
+  }
+}
+
+/** Record any `const X = () => …` / `const X = function () {…}` declarators as local components. */
+function registerVariableComponents(scope: ModuleScope, declaration: VariableDeclaration): void {
+  for (const declarator of declaration.declarations) {
+    if (declarator.id.type !== "Identifier") {
+      continue;
+    }
+    const body = declarator.init === null ? null : extractFunctionBody(declarator.init);
+    if (body !== null) {
+      scope.localComponents.set(declarator.id.name, body);
+    }
+  }
+}
+
+/** The function body of an arrow/function expression, or `null` for any other initializer. */
+function extractFunctionBody(init: Expression): ComponentBody | null {
+  if (init.type === "ArrowFunctionExpression") {
+    return init.body;
+  }
+  if (init.type === "FunctionExpression") {
+    return (init as FunctionNode).body;
+  }
+  return null;
+}
+
+/**
+ * Resolve the body of the module's default-export component from its declaration node, or `null`
+ * when it cannot be analyzed statically (no default export, an HOC/`memo(...)` wrapper, a class, or
+ * a re-exported name not declared in this module).
+ */
+function resolveDefaultExportBody(
+  declaration: ExportDefaultDeclaration["declaration"] | null,
+  scope: ModuleScope,
+): ComponentBody | null {
+  if (declaration === null) {
+    return null;
+  }
+  if (declaration.type === "FunctionDeclaration") {
+    return (declaration as FunctionNode).body;
+  }
+  if (declaration.type === "FunctionExpression") {
+    return (declaration as FunctionNode).body;
+  }
+  if (declaration.type === "ParenthesizedExpression") {
+    return resolveDefaultExportBody(declaration.expression, scope);
+  }
+  if (declaration.type === "ArrowFunctionExpression") {
+    return declaration.body;
+  }
+  if (declaration.type === "Identifier") {
+    return scope.localComponents.get(declaration.name) ?? null;
+  }
+  return null;
+}
+
+/**
+ * Walk a component body and collect the `<Outlet>`s it renders, following references to
+ * non-exported local components (the only components whose render output is unambiguously this
+ * route's). The visited set guards against mutually-recursive components.
+ */
+function collectReachableOutlets(
+  body: ComponentBody,
+  source: string,
+  scope: ModuleScope,
+  visited: Set<string>,
+): OutletInfo[] {
   const outlets: OutletInfo[] = [];
-  walk(program, (node) => {
-    if (node.type === "JSXOpeningElement" && isOutletName(node.name, scope)) {
+  walkReachableBody(body, (node) => {
+    if (node.type !== "JSXOpeningElement") {
+      return;
+    }
+    if (isOutletName(node.name, scope)) {
       outlets.push(buildOutletInfo(node, source, scope));
+      return;
+    }
+    if (node.name.type !== "JSXIdentifier") {
+      return;
+    }
+    const name = node.name.name;
+    if (scope.localComponents.has(name) && !scope.exportedNames.has(name) && !visited.has(name)) {
+      visited.add(name);
+      outlets.push(
+        ...collectReachableOutlets(scope.localComponents.get(name)!, source, scope, visited),
+      );
     }
   });
   return outlets;
 }
 
-function collectModuleScope(program: Program): ModuleScope {
-  const scope: ModuleScope = {
-    outletDirect: new Set(),
-    outletNamespaces: new Set(),
-    localAliases: new Map(),
-    exportedNames: new Set(),
-  };
-
-  for (const statement of program.body as Statement[]) {
-    if (statement.type === "ImportDeclaration") {
-      const source = statement.source.value;
-      if (source !== "react-router" && source !== "react-router-dom") {
-        continue;
-      }
-      for (const specifier of statement.specifiers) {
-        if (specifier.type === "ImportNamespaceSpecifier") {
-          scope.outletNamespaces.add(specifier.local.name);
-        } else if (
-          specifier.type === "ImportSpecifier" &&
-          specifier.imported.type === "Identifier" &&
-          specifier.imported.name === "Outlet"
-        ) {
-          scope.outletDirect.add(specifier.local.name);
-        }
-      }
-    } else if (statement.type === "TSTypeAliasDeclaration") {
-      scope.localAliases.set(statement.id.name, { start: statement.start, end: statement.end });
-    } else if (statement.type === "ExportNamedDeclaration") {
-      const declaration = statement.declaration;
-      if (declaration !== null && declaration.type === "TSTypeAliasDeclaration") {
-        scope.localAliases.set(declaration.id.name, {
-          start: declaration.start,
-          end: declaration.end,
-        });
-        scope.exportedNames.add(declaration.id.name);
-      }
-      for (const specifier of statement.specifiers) {
-        if (specifier.local.type === "Identifier") {
-          scope.exportedNames.add(specifier.local.name);
-        }
-      }
+function walkReachableBody(node: unknown, visit: (node: Node) => void): void {
+  if (Array.isArray(node)) {
+    for (const item of node) {
+      walkReachableBody(item, visit);
+    }
+    return;
+  }
+  if (node === null || typeof node !== "object") {
+    return;
+  }
+  if (typeof (node as { type?: unknown }).type === "string") {
+    const astNode = node as Node;
+    if (isFunctionOrClassNode(astNode)) {
+      return;
+    }
+    visit(astNode);
+  }
+  for (const [key, value] of Object.entries(node)) {
+    if (key !== "parent") {
+      walkReachableBody(value, visit);
     }
   }
-  return scope;
+}
+
+function isFunctionOrClassNode(node: Node): boolean {
+  return (
+    node.type === "FunctionDeclaration" ||
+    node.type === "FunctionExpression" ||
+    node.type === "ArrowFunctionExpression" ||
+    node.type === "ClassDeclaration" ||
+    node.type === "ClassExpression"
+  );
 }
 
 function isOutletName(name: JSXOpeningElement["name"], scope: ModuleScope): boolean {
@@ -506,24 +708,4 @@ function readAnnotation(
     operator: expression.type === "TSSatisfiesExpression" ? "satisfies" : "as",
     type: { text, span: { start: typeNode.start, end: typeNode.end }, localTypeAlias },
   };
-}
-
-function walk(node: unknown, visit: (node: Node) => void): void {
-  if (Array.isArray(node)) {
-    for (const item of node) {
-      walk(item, visit);
-    }
-    return;
-  }
-  if (node === null || typeof node !== "object") {
-    return;
-  }
-  if (typeof (node as { type?: unknown }).type === "string") {
-    visit(node as Node);
-  }
-  for (const [key, value] of Object.entries(node)) {
-    if (key !== "parent") {
-      walk(value, visit);
-    }
-  }
 }

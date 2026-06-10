@@ -199,6 +199,81 @@ export default function Plain() {
         });
       }).not.toThrow();
     });
+
+    it("does not infer when the parent's outlet is in an exported component", async () => {
+      const settings = await fixtureSettings();
+      expect(() => {
+        ruleTester.run("type-safe-outlet-context", typeSafeOutletContext, {
+          valid: [
+            {
+              code: `import { useOutletContext } from "react-router";
+
+export default function ChildExportedComponent() {
+  const context = useOutletContext();
+  return context;
+}
+`,
+              filename: appFile("child-exported-component.tsx"),
+              settings,
+            },
+          ],
+          invalid: [],
+        });
+      }).not.toThrow();
+    });
+
+    it("infers from a parent whose outlet is in a non-exported local component", async () => {
+      const settings = await fixtureSettings();
+      expect(() => {
+        ruleTester.run("type-safe-outlet-context", typeSafeOutletContext, {
+          valid: [],
+          invalid: [
+            {
+              code: `import { useOutletContext } from "react-router";
+
+export default function ChildLocalComponent() {
+  const context = useOutletContext();
+  return context;
+}
+`,
+              filename: appFile("child-local-component.tsx"),
+              settings,
+              errors: [{ messageId: "missingOutletContextType" }],
+              output: `import { useOutletContext } from "react-router";
+import type { ShopContext } from "./layout-local-component";
+
+export default function ChildLocalComponent() {
+  const context = useOutletContext<ShopContext>();
+  return context;
+}
+`,
+            },
+          ],
+        });
+      }).not.toThrow();
+    });
+
+    it("does not infer when the parent's outlet is in an unreachable local component", async () => {
+      const settings = await fixtureSettings();
+      expect(() => {
+        ruleTester.run("type-safe-outlet-context", typeSafeOutletContext, {
+          valid: [
+            {
+              code: `import { useOutletContext } from "react-router";
+
+export default function ChildUnreachableLocal() {
+  const context = useOutletContext();
+  return context;
+}
+`,
+              filename: appFile("child-unreachable-local.tsx"),
+              settings,
+            },
+          ],
+          invalid: [],
+        });
+      }).not.toThrow();
+    });
   });
 
   describe("parent route (<Outlet context>)", () => {
@@ -351,6 +426,115 @@ export default function Layout() {
               errors: [{ messageId: "outletContextTypeNotLocal" }],
             },
           ],
+        });
+      }).not.toThrow();
+    });
+
+    it("reports an <Outlet> rendered from an exported component", async () => {
+      const settings = await fixtureSettings();
+      expect(() => {
+        ruleTester.run("type-safe-outlet-context", typeSafeOutletContext, {
+          valid: [],
+          invalid: [
+            {
+              code: `import { Outlet } from "react-router";
+
+export type ShopContext = { shopId: string };
+
+export function ExportedSection() {
+  return <Outlet context={{ shopId: "shop_1" } satisfies ShopContext} />;
+}
+
+export default function LayoutExportedComponent() {
+  return <div>no outlet here</div>;
+}
+`,
+              filename: appFile("layout-exported-component.tsx"),
+              settings,
+              errors: [{ messageId: "outletInExportedComponent" }],
+            },
+          ],
+        });
+      }).not.toThrow();
+    });
+
+    it("accepts an <Outlet> rendered from a non-exported local component", async () => {
+      const settings = await fixtureSettings();
+      expect(() => {
+        ruleTester.run("type-safe-outlet-context", typeSafeOutletContext, {
+          valid: [
+            {
+              code: `import { Outlet } from "react-router";
+
+export type ShopContext = { shopId: string };
+
+function Inner() {
+  return <Outlet context={{ shopId: "shop_1" } satisfies ShopContext} />;
+}
+
+export default function LayoutLocalComponent() {
+  return <Inner />;
+}
+`,
+              filename: appFile("layout-local-component.tsx"),
+              settings,
+            },
+          ],
+          invalid: [],
+        });
+      }).not.toThrow();
+    });
+
+    it("ignores an <Outlet> in an unreachable local component", async () => {
+      const settings = await fixtureSettings();
+      expect(() => {
+        ruleTester.run("type-safe-outlet-context", typeSafeOutletContext, {
+          valid: [
+            {
+              code: `import { Outlet } from "react-router";
+
+export type ShopContext = { shopId: string };
+
+function NeverUsed() {
+  return <Outlet context={{ shopId: "shop_1" } satisfies ShopContext} />;
+}
+
+export default function LayoutUnreachableLocal() {
+  return <div>no outlet here</div>;
+}
+`,
+              filename: appFile("layout-unreachable-local.tsx"),
+              settings,
+            },
+          ],
+          invalid: [],
+        });
+      }).not.toThrow();
+    });
+
+    it("ignores an <Outlet> in a nested helper the default export does not render", async () => {
+      const settings = await fixtureSettings();
+      expect(() => {
+        ruleTester.run("type-safe-outlet-context", typeSafeOutletContext, {
+          valid: [
+            {
+              code: `import { Outlet } from "react-router";
+
+type ShopContext = { shopId: string };
+
+export default function LayoutUnreachableLocal() {
+  function NeverRendered() {
+    return <Outlet context={{ shopId: "shop_1" } satisfies ShopContext} />;
+  }
+
+  return <div>no outlet here</div>;
+}
+`,
+              filename: appFile("layout-unreachable-local.tsx"),
+              settings,
+            },
+          ],
+          invalid: [],
         });
       }).not.toThrow();
     });

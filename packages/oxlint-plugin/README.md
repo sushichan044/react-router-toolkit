@@ -58,7 +58,9 @@ writing the type on both sides. See [docs/rules/type-safe-outlet-context.md](./d
 - **Parent route** (renders `<Outlet context={...}>`): the context value must be annotated with
   `satisfies <Type>`, where `<Type>` is a type alias **defined and exported in that same module**.
   Anything else (no annotation, `as`, an inline type, a non-local or non-exported type) is reported
-  as an error with no auto-fix — silently adding `export` or rewriting `as` is too invasive.
+  as an error with no auto-fix — silently adding `export` or rewriting `as` is too invasive. The
+  `<Outlet>` must be rendered from the module's default export (or a non-exported local component it
+  renders); an `<Outlet>` in an exported component never passes context and is reported.
 - **Child route** (calls `useOutletContext()`): the rule fills in / corrects the generic type
   argument to that exported type and adds the `import type { Type }` from the parent module. When the
   parent passes no context, the child is left untouched.
