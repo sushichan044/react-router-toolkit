@@ -25,14 +25,51 @@ const typegen = define({
   },
   run: async (ctx) => {
     const root = resolve(ctx.values.root);
-    const resolved = await resolveReactRouterConfig(root);
-    const targets = computeTypegenTargets(root, await analyzeRouteModules(resolved));
-    const result = await writeTypegenFiles(targets, createProjectFiles(root));
+    try {
+      let resolved: Awaited<ReturnType<typeof resolveReactRouterConfig>>;
+      try {
+        resolved = await resolveReactRouterConfig(root);
+      } catch (error) {
+        throw new Error(
+          `Failed to resolve React Router config at ${root}: ${error instanceof Error ? error.message : String(error)}`,
+        );
+      }
 
-    for (const file of result.written) {
-      console.log(`  generated ${file}`);
+      let routeModules: Awaited<ReturnType<typeof analyzeRouteModules>>;
+      try {
+        routeModules = await analyzeRouteModules(resolved);
+      } catch (error) {
+        throw new Error(
+          `Failed to analyze route modules under ${root}: ${error instanceof Error ? error.message : String(error)}`,
+        );
+      }
+
+      let targets: ReturnType<typeof computeTypegenTargets>;
+      try {
+        targets = computeTypegenTargets(root, routeModules);
+      } catch (error) {
+        throw new Error(
+          `Failed to compute typegen targets under ${root}: ${error instanceof Error ? error.message : String(error)}`,
+        );
+      }
+
+      let result: Awaited<ReturnType<typeof writeTypegenFiles>>;
+      try {
+        result = await writeTypegenFiles(targets, createProjectFiles(root));
+      } catch (error) {
+        throw new Error(
+          `Failed to write typegen files under ${root}: ${error instanceof Error ? error.message : String(error)}`,
+        );
+      }
+
+      for (const file of result.written) {
+        console.log(`  generated ${file}`);
+      }
+      console.log(`typegen: ${result.written.length} files generated`);
+    } catch (error) {
+      console.error(`typegen failed: ${error instanceof Error ? error.message : String(error)}`);
+      process.exitCode = 1;
     }
-    console.log(`typegen: ${result.written.length} files generated`);
   },
 });
 
