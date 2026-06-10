@@ -8,10 +8,43 @@ type-level link between the value a layout passes and the type a descendant rout
 adds that link statically:
 
 - The parent layout annotates the context **once** with `satisfies <ExportedType>`.
-- Every descendant route's `useOutletContext()` is auto-filled (and kept in sync) with that type.
+- `react-router-toolkit typegen` generates a `./+toolkit-types/<route>` module for **every route
+  module**, exporting `NearestOutletContext`: the parent's exported type when statically known,
+  `undefined` when the route is never handed a context, `unknown` otherwise.
+- Every descendant route's `useOutletContext()` is auto-filled (and kept in sync) with the
+  generated `NearestOutletContext`.
 
 The connection is resolved from the route tree built at lint setup time, so the rule never performs
-cross-file type inference.
+cross-file type inference and never reads files while linting.
+
+### Typegen workflow
+
+Run typegen before type checking (typically as part of the same script):
+
+```jsonc
+// package.json
+{
+  "scripts": {
+    "typecheck": "react-router-toolkit typegen && tsc",
+  },
+}
+```
+
+And map the generated directory in `tsconfig.json` via `rootDirs`, the same mechanism React
+Router's own typegen uses, so route files can import `./+toolkit-types/<route>`:
+
+```jsonc
+{
+  "include": [".react-router-toolkit/types/**/*" /* ... */],
+  "compilerOptions": {
+    "rootDirs": [".", "./.react-router-toolkit/types"],
+  },
+}
+```
+
+The rule itself never verifies that typegen ran — it assumes the generated module exists. If it
+does not, the inserted import fails type checking, which is the signal to run
+`react-router-toolkit typegen`.
 
 ## Parent route (renders `<Outlet context={...}>`)
 
@@ -65,15 +98,17 @@ is dead code and is ignored. These same rules decide which outlet a child route 
 
 ## Child route (calls `useOutletContext()`)
 
-The rule fills in or corrects the generic type argument to match the immediate parent layout's
-exported context type, adding the `import type` from the parent module when needed.
+When the immediate parent layout passes a single exported context type, the route is a typegen
+target: the rule fills in or corrects the generic type argument with the generated
+`NearestOutletContext`, adding the `import type` from the route's own `./+toolkit-types/<route>`
+module when needed.
 
 ```tsx
 // before
 const ctx = useOutletContext();
 // after --fix
-import type { ShopContext } from "../layout";
-const ctx = useOutletContext<ShopContext>();
+import type { NearestOutletContext } from "./+toolkit-types/child";
+const ctx = useOutletContext<NearestOutletContext>();
 ```
 
 Only the **immediate** parent's `<Outlet>` is consulted, matching React Router: every `<Outlet>`

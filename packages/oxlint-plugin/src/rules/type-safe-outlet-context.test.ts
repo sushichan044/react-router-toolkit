@@ -63,10 +63,10 @@ export default function Child() {
               settings,
               errors: [{ messageId: "missingOutletContextType" }],
               output: `import { useOutletContext } from "react-router";
-import type { ShopContext } from "./layout";
+import type { NearestOutletContext } from "./+toolkit-types/child";
 
 export default function Child() {
-  const context = useOutletContext<ShopContext>();
+  const context = useOutletContext<NearestOutletContext>();
   return context;
 }
 `,
@@ -94,10 +94,10 @@ export default function ChildWrong() {
               settings,
               errors: [{ messageId: "outdatedOutletContextType" }],
               output: `import { useOutletContext } from "react-router";
-import type { ShopContext } from "./layout";
+import type { NearestOutletContext } from "./+toolkit-types/child-wrong";
 
 export default function ChildWrong() {
-  const context = useOutletContext<ShopContext>();
+  const context = useOutletContext<NearestOutletContext>();
   return context;
 }
 `,
@@ -114,10 +114,10 @@ export default function ChildWrong() {
           valid: [
             {
               code: `import { useOutletContext } from "react-router";
-import type { ShopContext } from "./layout";
+import type { NearestOutletContext } from "./+toolkit-types/child";
 
 export default function Child() {
-  const context = useOutletContext<ShopContext>();
+  const context = useOutletContext<NearestOutletContext>();
   return context;
 }
 `,
@@ -240,13 +240,72 @@ export default function ChildLocalComponent() {
               settings,
               errors: [{ messageId: "missingOutletContextType" }],
               output: `import { useOutletContext } from "react-router";
-import type { ShopContext } from "./layout-local-component";
+import type { NearestOutletContext } from "./+toolkit-types/child-local-component";
 
 export default function ChildLocalComponent() {
-  const context = useOutletContext<ShopContext>();
+  const context = useOutletContext<NearestOutletContext>();
   return context;
 }
 `,
+            },
+          ],
+        });
+      }).not.toThrow();
+    });
+
+    it("aggregates every registration when one file is routed under multiple parents", async () => {
+      const settings = await fixtureSettings();
+      expect(() => {
+        ruleTester.run("type-safe-outlet-context", typeSafeOutletContext, {
+          valid: [],
+          invalid: [
+            {
+              // shared.tsx is registered under layout-no-context.tsx (bare <Outlet/>, enumerated
+              // first) AND layout-local-component.tsx (passes ShopContext). Taking only the first
+              // registration would wrongly report `parentOutletPassesNoContext`; the aggregate is
+              // typed (`ShopContext | undefined` in the generated module), so the rule must fill in
+              // NearestOutletContext.
+              code: `import { useOutletContext } from "react-router";
+
+export default function Shared() {
+  const context = useOutletContext();
+  return context;
+}
+`,
+              filename: appFile("shared.tsx"),
+              settings,
+              errors: [{ messageId: "missingOutletContextType" }],
+              output: `import { useOutletContext } from "react-router";
+import type { NearestOutletContext } from "./+toolkit-types/shared";
+
+export default function Shared() {
+  const context = useOutletContext<NearestOutletContext>();
+  return context;
+}
+`,
+            },
+          ],
+        });
+      }).not.toThrow();
+    });
+
+    it("reports misuse in the root route, which is never handed a context", async () => {
+      const settings = await fixtureSettings();
+      expect(() => {
+        ruleTester.run("type-safe-outlet-context", typeSafeOutletContext, {
+          valid: [],
+          invalid: [
+            {
+              code: `import { useOutletContext } from "react-router";
+
+export default function Root() {
+  const context = useOutletContext();
+  return context;
+}
+`,
+              filename: appFile("root.tsx"),
+              settings,
+              errors: [{ messageId: "parentOutletPassesNoContext" }],
             },
           ],
         });
