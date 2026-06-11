@@ -2,6 +2,11 @@
 
 YOU MUST ENSURE `vp run build && vp check --fix && vp test` PASSES BEFORE ENDING ANY TASKS.
 
+## What we making
+
+This is a toolkit for performing cross-file analysis in accordance with the conventions of the React Router v7+ framework.
+Its purpose is to facilitate the control of the entire codebase at the static analysis layer.
+
 ## Script
 
 - `vp check`: Run formatter, linter, type checker.
