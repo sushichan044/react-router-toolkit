@@ -105,6 +105,71 @@ export default function Child() {
     }).not.toThrow();
   });
 
+  it("reports route type imports from non-generated modules", async () => {
+    const settings = await fixtureSettings();
+    expect(() => {
+      ruleTester.run("valid-route-type-imports", validRouteTypeImports, {
+        valid: [],
+        invalid: [
+          {
+            code: `import type { Route } from "../shared/react-router-types";
+import type { NearestOutletContext } from "../shared/toolkit-types";
+
+export function loader({ params }: Route.LoaderArgs) {
+  return params;
+}
+
+export default function Child() {
+  const context: NearestOutletContext = { shopId: "shop_1" };
+  return context.shopId;
+}
+`,
+            filename: appFile("child.tsx"),
+            settings,
+            errors: [
+              { messageId: "wrongReactRouterTypeImport" },
+              { messageId: "wrongToolkitTypeImport" },
+            ],
+            output: `import type { Route } from "./+types/child";
+import type { NearestOutletContext } from "./+toolkit-types/child";
+
+export function loader({ params }: Route.LoaderArgs) {
+  return params;
+}
+
+export default function Child() {
+  const context: NearestOutletContext = { shopId: "shop_1" };
+  return context.shopId;
+}
+`,
+          },
+        ],
+      });
+    }).not.toThrow();
+  });
+
+  it("ignores unrelated generated type imports", async () => {
+    const settings = await fixtureSettings();
+    expect(() => {
+      ruleTester.run("valid-route-type-imports", validRouteTypeImports, {
+        valid: [
+          {
+            code: `import type { OtherRouteType } from "./+types/other";
+import type { OtherToolkitType } from "./+toolkit-types/other";
+
+export function helper(route: OtherRouteType, toolkit: OtherToolkitType) {
+  return { route, toolkit };
+}
+`,
+            filename: appFile("child.tsx"),
+            settings,
+          },
+        ],
+        invalid: [],
+      });
+    }).not.toThrow();
+  });
+
   it("inserts missing generated type imports when generated route types are referenced", async () => {
     const settings = await fixtureSettings();
     expect(() => {

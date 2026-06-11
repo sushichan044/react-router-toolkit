@@ -130,11 +130,12 @@ const validRouteTypeImports = defineRule({
         }
 
         for (const descriptor of GENERATED_TYPE_IMPORTS) {
-          if (!source.startsWith(descriptor.sourcePrefix)) {
+          const importsTarget = importsExportedName(node, descriptor.exportedName);
+          if (!importsTarget) {
             continue;
           }
           const expected = descriptor.expectedSpecifier(selfEntries[0]!.physicalFile);
-          if (importsExportedName(node, descriptor.exportedName) && source === expected) {
+          if (source === expected) {
             importedFromExpected.add(descriptor.exportedName);
           }
           if (source !== expected) {
