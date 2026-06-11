@@ -32,6 +32,7 @@ export default defineConfig({
   rules: {
     "react-router-toolkit/valid-route-file": "error",
     "react-router-toolkit/type-safe-outlet-context": "error",
+    "react-router-toolkit/valid-route-type-imports": "error",
   },
 });
 ```
@@ -64,3 +65,13 @@ writing the type on both sides. See [docs/rules/type-safe-outlet-context.md](./d
 - **Child route** (calls `useOutletContext()`): the rule fills in / corrects the generic type
   argument to that exported type and adds the `import type { Type }` from the parent module. When the
   parent passes no context, the child is left untouched.
+
+### `valid-route-type-imports`
+
+Keeps generated type imports pointed at the current route module's own generated type files. See
+[docs/rules/valid-route-type-imports.md](./docs/rules/valid-route-type-imports.md).
+
+- React Router route types must come from `./+types/<route>`.
+- `react-router-toolkit` route types must come from `./+toolkit-types/<route>`.
+- The rule fixes wrong generated type import sources and can insert missing imports for `Route.*`
+  and `NearestOutletContext` references.
