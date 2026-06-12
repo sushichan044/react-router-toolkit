@@ -66,6 +66,37 @@ describe("listPublicAssets", () => {
     expect(result).toStrictEqual(["/STORES ロイヤリティ同意事項.pdf"]);
   });
 
+  it("returns the raw path when a filename cannot be decoded as a URI", async () => {
+    const vfs = makeVfs({
+      "/bad%zz.txt": "",
+    });
+
+    const result = await listPublicAssets("/public", vfs);
+    expect(result).toStrictEqual(["/bad%zz.txt"]);
+  });
+
+  it("surfaces descendant traversal errors instead of returning partial results", async () => {
+    const vfs = makeVfs({
+      "/ok.txt": "",
+      "/blocked/file.txt": "",
+    });
+    const originalReaddir = vfs.promises.readdir.bind(vfs.promises);
+    const files = {
+      ...vfs,
+      promises: {
+        ...vfs.promises,
+        readdir: async (path: string) => {
+          if (path === "/blocked") {
+            throw Object.assign(new Error("permission denied"), { code: "EACCES" });
+          }
+          return originalReaddir(path);
+        },
+      },
+    } as typeof vfs;
+
+    await expect(listPublicAssets("/public", files)).rejects.toThrow("permission denied");
+  });
+
   it("returns a sorted array regardless of filesystem order", async () => {
     const vfs = makeVfs({
       "/z.txt": "",

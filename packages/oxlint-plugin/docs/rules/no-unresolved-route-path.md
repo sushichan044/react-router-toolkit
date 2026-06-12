@@ -81,8 +81,8 @@ navigate(`/nope/${id}`); // ❌ /nope has no registered route
 ```
 
 When an expression fills a **static** segment (e.g., `` `/shops/${staticString}/edit` `` but only
-`/shops/:id/edit` exists), the rule reports a violation because the placeholder matches any dynamic
-segment, not an arbitrary static one. See [Known Limitations](#known-limitations).
+`/shops/featured/edit` exists), the rule reports a violation because the placeholder matches dynamic
+segments, not arbitrary static ones. See [Known Limitations](#known-limitations).
 
 ## Public asset detection
 

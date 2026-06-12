@@ -69,7 +69,7 @@ Error message: `unknownRouteParam`
 
 The error message includes both the unknown key and the full list of available params:
 
-```
+```text
 Route param "shopId" does not exist on this route (available: shop_id).
 Check the route path definition in routes.ts.
 ```
@@ -83,7 +83,7 @@ child route module can access all params defined by its ancestors in addition to
 uses the same accumulation: it collects all `:param` and `*` (splat) segments from the route and
 every ancestor route.
 
-```
+```ts
 routes.ts:
   route("shops", "shops.tsx", [
     route(":shop_id", "shop-detail.tsx")

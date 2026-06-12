@@ -45,11 +45,15 @@ export function collectRouteParams(routes: RouteManifest): Map<string, Set<strin
 
   // Walk the ancestor chain to accumulate params. Use a cache so each id is computed once.
   const cache = new Map<string, Set<string>>();
+  const visiting = new Set<string>();
 
   function accumulated(id: string): Set<string> {
     const cached = cache.get(id);
     if (cached !== undefined) {
       return cached;
+    }
+    if (visiting.has(id)) {
+      throw new Error(`Cyclic route parent chain detected at "${id}"`);
     }
 
     const entry = routes[id];
@@ -59,17 +63,22 @@ export function collectRouteParams(routes: RouteManifest): Map<string, Set<strin
       return empty;
     }
 
-    const own = ownParams.get(id) ?? new Set<string>();
-    const result = new Set<string>(own);
+    visiting.add(id);
+    try {
+      const own = ownParams.get(id) ?? new Set<string>();
+      const result = new Set<string>(own);
 
-    if (entry.parentId !== undefined) {
-      for (const param of accumulated(entry.parentId)) {
-        result.add(param);
+      if (entry.parentId !== undefined) {
+        for (const param of accumulated(entry.parentId)) {
+          result.add(param);
+        }
       }
-    }
 
-    cache.set(id, result);
-    return result;
+      cache.set(id, result);
+      return result;
+    } finally {
+      visiting.delete(id);
+    }
   }
 
   const result = new Map<string, Set<string>>();

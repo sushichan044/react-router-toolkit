@@ -113,6 +113,41 @@ describe("findOrphanRouteFiles", () => {
     expect(result).toStrictEqual(["a-route/route.tsx", "m-route/route.tsx", "z-route/route.tsx"]);
   });
 
+  it("reports every orphan file independently", async () => {
+    const vfs = makeVfs({
+      "/first/route.tsx": "export default () => null;",
+      "/second/route.tsx": "export default () => null;",
+    });
+    const routes: RouteManifest = {
+      root: { id: "root", file: "root.tsx" },
+    };
+
+    const result = await findOrphanRouteFiles(routes, "/app", vfs);
+    expect(result).toStrictEqual(["first/route.tsx", "second/route.tsx"]);
+  });
+
+  it("surfaces descendant traversal errors instead of returning partial results", async () => {
+    const vfs = makeVfs({
+      "/ok/route.tsx": "export default () => null;",
+      "/blocked/route.tsx": "export default () => null;",
+    });
+    const originalReaddir = vfs.promises.readdir.bind(vfs.promises);
+    const files = {
+      ...vfs,
+      promises: {
+        ...vfs.promises,
+        readdir: async (path: string) => {
+          if (path === "/blocked") {
+            throw Object.assign(new Error("permission denied"), { code: "EACCES" });
+          }
+          return originalReaddir(path);
+        },
+      },
+    } as typeof vfs;
+
+    await expect(findOrphanRouteFiles({}, "/app", files)).rejects.toThrow("permission denied");
+  });
+
   it("does not treat root.tsx as an orphan because it is in the manifest", async () => {
     const vfs = makeVfs({
       "/root.tsx": "export default () => null;",

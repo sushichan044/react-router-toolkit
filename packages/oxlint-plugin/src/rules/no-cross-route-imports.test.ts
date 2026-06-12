@@ -6,6 +6,7 @@ import { RuleTester } from "oxlint/plugins-dev";
 import { describe, expect, it } from "vite-plus/test";
 
 import { makeTempDir } from "../../test/utils";
+import { SETTINGS_KEY } from "../settings";
 import { reactRouterToolkitSettings } from "../setup";
 import noCrossRouteImports from "./no-cross-route-imports";
 
@@ -32,6 +33,15 @@ async function fixtureSettings(): Promise<Settings> {
     cacheDir: cacheDir.path,
   });
   return settings as unknown as Settings;
+}
+
+async function fixtureSettingsWithBareAtAlias(): Promise<Settings> {
+  const settings = (await fixtureSettings()) as Record<string, unknown>;
+  const toolkit = settings[SETTINGS_KEY] as {
+    importAliases: { alias: string; targets: string[] }[];
+  };
+  toolkit.importAliases = [{ alias: "@", targets: [`${join(fixtureRoot(), "app")}/`] }];
+  return settings as Settings;
 }
 
 describe("no-cross-route-imports", () => {
@@ -132,6 +142,23 @@ describe("no-cross-route-imports", () => {
     }).not.toThrow();
   });
 
+  it("reports export * from another route module", async () => {
+    const settings = await fixtureSettings();
+    expect(() => {
+      ruleTester.run("no-cross-route-imports", noCrossRouteImports, {
+        valid: [],
+        invalid: [
+          {
+            code: `export * from "./about.tsx";`,
+            filename: appFile("home.tsx"),
+            settings,
+            errors: [{ messageId: "crossRouteImport" }],
+          },
+        ],
+      });
+    }).not.toThrow();
+  });
+
   // ---------------------------------------------------------------------------
   // Invalid: import { type X, value } mixed import — value part makes it invalid
   // ---------------------------------------------------------------------------
@@ -195,6 +222,22 @@ describe("no-cross-route-imports", () => {
     }).not.toThrow();
   });
 
+  it("does not report export type from another route module when allowTypeImports is true", async () => {
+    const settings = await fixtureSettings();
+    expect(() => {
+      ruleTester.run("no-cross-route-imports", noCrossRouteImports, {
+        valid: [
+          {
+            code: `export type { SomeType } from "./about.tsx";`,
+            filename: appFile("home.tsx"),
+            settings,
+          },
+        ],
+        invalid: [],
+      });
+    }).not.toThrow();
+  });
+
   it("does not report when all specifiers are type-only", async () => {
     const settings = await fixtureSettings();
     expect(() => {
@@ -222,6 +265,22 @@ describe("no-cross-route-imports", () => {
         valid: [
           {
             code: `import { sharedValue } from "./shared";`,
+            filename: appFile("home.tsx"),
+            settings,
+          },
+        ],
+        invalid: [],
+      });
+    }).not.toThrow();
+  });
+
+  it("does not expand a bare alias when the specifier continues without a path separator", async () => {
+    const settings = await fixtureSettingsWithBareAtAlias();
+    expect(() => {
+      ruleTester.run("no-cross-route-imports", noCrossRouteImports, {
+        valid: [
+          {
+            code: `import { something } from "@about";`,
             filename: appFile("home.tsx"),
             settings,
           },

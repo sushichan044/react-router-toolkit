@@ -35,8 +35,11 @@ async function collectFiles(
   let entries: string[];
   try {
     entries = await files.promises.readdir(dir);
-  } catch {
-    return;
+  } catch (error) {
+    if (isMissingDuringWalk(error)) {
+      return;
+    }
+    throw error;
   }
 
   await Promise.all(
@@ -45,8 +48,11 @@ async function collectFiles(
       let stat;
       try {
         stat = await files.promises.stat(entryPath);
-      } catch {
-        return;
+      } catch (error) {
+        if (isMissingDuringWalk(error)) {
+          return;
+        }
+        throw error;
       }
       if (stat.isDirectory()) {
         await collectFiles(files, entryPath, results);
@@ -61,4 +67,9 @@ async function collectFiles(
       }
     }),
   );
+}
+
+function isMissingDuringWalk(error: unknown): boolean {
+  const code = (error as { code?: unknown }).code;
+  return code === "ENOENT" || code === "ENOTDIR";
 }

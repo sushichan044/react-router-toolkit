@@ -7,6 +7,7 @@ import { readSettings } from "../settings";
 import { getRuleDocsURL } from "../utils";
 
 type MessageIds = "unknownRouteExport";
+type BoundIdentifier = ESTree.Node & { type: "Identifier"; name: string };
 
 interface RuleOptions {
   /** Export names that are explicitly allowed even if not recognized by React Router. */
@@ -140,8 +141,10 @@ const noUnknownRouteExports = defineRule({
             }
           } else if (decl.type === "VariableDeclaration") {
             for (const declarator of decl.declarations) {
-              if (declarator.id.type === "Identifier" && !isAllowed(declarator.id.name)) {
-                reportUnknown(node, declarator.id.name);
+              for (const identifier of collectBoundIdentifiers(declarator.id)) {
+                if (!isAllowed(identifier.name)) {
+                  reportUnknown(identifier, identifier.name);
+                }
               }
             }
           }
@@ -166,5 +169,35 @@ const noUnknownRouteExports = defineRule({
     };
   },
 });
+
+function collectBoundIdentifiers(node: ESTree.Node): BoundIdentifier[] {
+  switch (node.type) {
+    case "Identifier": {
+      return [node];
+    }
+    case "ObjectPattern": {
+      return node.properties.flatMap((property) => {
+        if (property.type === "RestElement") {
+          return collectBoundIdentifiers(property.argument);
+        }
+        return collectBoundIdentifiers(property.value);
+      });
+    }
+    case "ArrayPattern": {
+      return node.elements.flatMap((element) =>
+        element === null ? [] : collectBoundIdentifiers(element),
+      );
+    }
+    case "AssignmentPattern": {
+      return collectBoundIdentifiers(node.left);
+    }
+    case "RestElement": {
+      return collectBoundIdentifiers(node.argument);
+    }
+    default: {
+      return [];
+    }
+  }
+}
 
 export default noUnknownRouteExports;

@@ -7,6 +7,7 @@ import { RuleTester } from "oxlint/plugins-dev";
 import { describe, expect, it } from "vite-plus/test";
 
 import { makeTempDir } from "../../test/utils";
+import { SETTINGS_KEY } from "../settings";
 import { reactRouterToolkitSettings } from "../setup";
 import validRouteFile from "./valid-route-file";
 
@@ -111,6 +112,37 @@ describe("valid-route-file", () => {
             filename: fixtureRoutesFile("with-orphan"),
             settings,
             errors: [
+              {
+                messageId: "orphanRouteFile",
+                line: 3,
+                column: 0,
+              },
+            ],
+          },
+        ],
+      });
+    }).not.toThrow();
+  });
+
+  it("reports every orphan route file on the export default declaration", async () => {
+    const settings = (await fixtureSettings("with-orphan")) as Record<string, unknown>;
+    const toolkit = settings[SETTINGS_KEY] as { orphanRouteFiles: string[] };
+    toolkit.orphanRouteFiles = ["first/route.tsx", "second/route.tsx"];
+
+    expect(() => {
+      ruleTester.run("valid-route-file", validRouteFile, {
+        valid: [],
+        invalid: [
+          {
+            code: readFixture("with-orphan"),
+            filename: fixtureRoutesFile("with-orphan"),
+            settings: settings as Settings,
+            errors: [
+              {
+                messageId: "orphanRouteFile",
+                line: 3,
+                column: 0,
+              },
               {
                 messageId: "orphanRouteFile",
                 line: 3,

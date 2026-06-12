@@ -154,6 +154,27 @@ describe("collectRouteParams", () => {
     });
   });
 
+  describe("malformed manifests", () => {
+    it("throws a clear error for cyclic parent chains", () => {
+      const manifest: RouteManifest = {
+        "routes/a": {
+          id: "routes/a",
+          parentId: "routes/b",
+          path: "a/:a",
+          file: "routes/a.tsx",
+        },
+        "routes/b": {
+          id: "routes/b",
+          parentId: "routes/a",
+          path: "b/:b",
+          file: "routes/b.tsx",
+        },
+      };
+
+      expect(() => collectRouteParams(manifest)).toThrow(/Cyclic route parent chain/);
+    });
+  });
+
   describe("empty manifest", () => {
     it("returns an empty map", () => {
       const map = collectRouteParams({});

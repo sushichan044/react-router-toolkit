@@ -130,6 +130,29 @@ export default function Home() { return null; }
     }).not.toThrow();
   });
 
+  it("reports unknown names exported through destructuring patterns", async () => {
+    const settings = await fixtureSettings();
+    expect(() => {
+      ruleTester.run("no-unknown-route-exports", noUnknownRouteExports, {
+        valid: [],
+        invalid: [
+          {
+            code: `export const { loadre } = helpers;`,
+            filename: appFile("home.tsx"),
+            settings,
+            errors: [{ messageId: "unknownRouteExport" }],
+          },
+          {
+            code: `export const [sharedConfig] = values;`,
+            filename: appFile("home.tsx"),
+            settings,
+            errors: [{ messageId: "unknownRouteExport" }],
+          },
+        ],
+      });
+    }).not.toThrow();
+  });
+
   // -------------------------------------------------------------------------
   // Valid: type-only exports are never reported
   // -------------------------------------------------------------------------

@@ -164,7 +164,17 @@ function buildCandidatePathnames(template: ParsedPathTemplate): string[] {
   // expression.
   const significant = template.filter((token) => token.kind === "dynamic" || token.value !== "");
   const last = significant[significant.length - 1];
-  if (last !== undefined && last.kind === "dynamic") {
+  const previous = significant[significant.length - 2];
+  const canOmitTrailingDynamic =
+    last !== undefined &&
+    last.kind === "dynamic" &&
+    previous !== undefined &&
+    previous.kind === "literal" &&
+    (previous.value === "" ||
+      previous.value.endsWith("/") ||
+      previous.value.endsWith("?") ||
+      previous.value.endsWith("#"));
+  if (canOmitTrailingDynamic) {
     const withoutTrailing = buildPathname(significant.slice(0, -1));
     if (withoutTrailing !== null) {
       candidates.push(withoutTrailing);

@@ -100,10 +100,11 @@ const validRouteTypeImports = defineRule({
       expected: string;
     }[] = [];
     let handwrittenRouteTypeSpecifiers: {
-      node: ESTree.ImportSpecifier;
+      node: ESTree.Node;
       name: string;
       replacement: string;
     }[] = [];
+    let reactRouterNamespaceImports = new Set<string>();
 
     return {
       before: () => {
@@ -115,6 +116,7 @@ const validRouteTypeImports = defineRule({
         usedToolkitType = false;
         wrongImports = [];
         handwrittenRouteTypeSpecifiers = [];
+        reactRouterNamespaceImports = new Set();
 
         if (context.settings !== settingsSource) {
           settingsSource = context.settings;
@@ -176,6 +178,10 @@ const validRouteTypeImports = defineRule({
           return;
         }
         for (const specifier of node.specifiers) {
+          if (specifier.type === "ImportNamespaceSpecifier") {
+            reactRouterNamespaceImports.add(specifier.local.name);
+            continue;
+          }
           if (specifier.type !== "ImportSpecifier") {
             continue;
           }
@@ -217,6 +223,18 @@ const validRouteTypeImports = defineRule({
         } else if (node.typeName.type === "Identifier") {
           if (node.typeName.name === NEAREST_OUTLET_CONTEXT_TYPE) {
             usedToolkitType = true;
+          }
+        } else {
+          const handwritten = getReactRouterNamespaceHandwrittenType(
+            node.typeName,
+            reactRouterNamespaceImports,
+          );
+          if (handwritten !== null) {
+            handwrittenRouteTypeSpecifiers.push({
+              node: node.typeName,
+              name: handwritten.name,
+              replacement: handwritten.replacement,
+            });
           }
         }
       },
@@ -326,6 +344,23 @@ function isRouteNamespaceType(typeName: ESTree.TSTypeReference["typeName"]): boo
     left = left.left;
   }
   return left.type === "Identifier" && left.name === REACT_ROUTER_ROUTE_TYPE;
+}
+
+function getReactRouterNamespaceHandwrittenType(
+  typeName: ESTree.TSTypeReference["typeName"],
+  namespaces: ReadonlySet<string>,
+): { name: string; replacement: string } | null {
+  if (typeName.type !== "TSQualifiedName") {
+    return null;
+  }
+  if (typeName.left.type !== "Identifier" || !namespaces.has(typeName.left.name)) {
+    return null;
+  }
+  if (typeName.right.type !== "Identifier") {
+    return null;
+  }
+  const replacement = HANDWRITTEN_ROUTE_TYPE_REPLACEMENTS.get(typeName.right.name);
+  return replacement === undefined ? null : { name: typeName.right.name, replacement };
 }
 
 function reactRouterTypesSpecifier(physicalFile: string): string {

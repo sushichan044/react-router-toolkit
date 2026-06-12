@@ -54,9 +54,12 @@ const noUnresolvedRoutePath = defineRule({
 
     // Per-file state, reset in `before()`.
     let redirectLocalName: string | null = null;
+    let useNavigateLocalName: string | null = null;
     let linkLocalName: string | null = null;
     let navLinkLocalName: string | null = null;
     let formLocalName: string | null = null;
+    let navigateLocalNames: Set<string> = new Set();
+    let localBindings: Set<string> = new Set();
 
     function getOptions(): RuleOptions {
       const raw = (context.options as unknown[])[0];
@@ -172,9 +175,12 @@ const noUnresolvedRoutePath = defineRule({
       before: () => {
         // Reset per-file state.
         redirectLocalName = null;
+        useNavigateLocalName = null;
         linkLocalName = null;
         navLinkLocalName = null;
         formLocalName = null;
+        navigateLocalNames = new Set();
+        localBindings = new Set();
 
         // Rebuild route tree and public assets Set only when settings reference changes.
         if (context.settings !== settingsSource) {
@@ -198,6 +204,7 @@ const noUnresolvedRoutePath = defineRule({
         // Fast path: skip files that cannot possibly contain navigation calls.
         const text = context.sourceCode.text;
         const hasCandidates =
+          text.includes("useNavigate") ||
           text.includes("navigate") ||
           text.includes("redirect") ||
           text.includes(" to=") ||
@@ -227,6 +234,10 @@ const noUnresolvedRoutePath = defineRule({
               redirectLocalName = local;
               break;
             }
+            case "useNavigate": {
+              useNavigateLocalName = local;
+              break;
+            }
             case "Link": {
               linkLocalName = local;
               break;
@@ -243,9 +254,38 @@ const noUnresolvedRoutePath = defineRule({
         }
       },
 
+      FunctionDeclaration: (node) => {
+        if (node.id !== null) {
+          localBindings.add(node.id.name);
+        }
+      },
+
+      VariableDeclarator: (node) => {
+        if (node.id.type !== "Identifier") {
+          return;
+        }
+        localBindings.add(node.id.name);
+
+        const init = node.init;
+        if (init?.type !== "CallExpression") {
+          return;
+        }
+        const callee = init.callee;
+        if (
+          callee.type === "Identifier" &&
+          useNavigateLocalName !== null &&
+          callee.name === useNavigateLocalName
+        ) {
+          navigateLocalNames.add(node.id.name);
+        }
+      },
+
       CallExpression: (node) => {
         const callee = node.callee;
-        const isNavigate = callee.type === "Identifier" && callee.name === "navigate";
+        const isNavigate =
+          callee.type === "Identifier" &&
+          (navigateLocalNames.has(callee.name) ||
+            (callee.name === "navigate" && !localBindings.has("navigate")));
         const isRedirect =
           callee.type === "Identifier" &&
           redirectLocalName !== null &&
@@ -270,9 +310,9 @@ const noUnresolvedRoutePath = defineRule({
         }
         if (!elementName) return;
 
-        const isLink = elementName === linkLocalName || elementName === "Link";
-        const isNavLink = elementName === navLinkLocalName || elementName === "NavLink";
-        const isForm = elementName === formLocalName || elementName === "Form";
+        const isLink = elementName === linkLocalName;
+        const isNavLink = elementName === navLinkLocalName;
+        const isForm = elementName === formLocalName;
         const isAnchor = elementName === "a";
 
         let targetAttrName: string | null = null;

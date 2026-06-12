@@ -72,6 +72,44 @@ describe("no-unresolved-route-path", () => {
     }).not.toThrow();
   });
 
+  it("does not report a local navigate helper that is not imported from React Router", async () => {
+    const settings = await fixtureSettings();
+    expect(() => {
+      ruleTester.run("no-unresolved-route-path", noUnresolvedRoutePath, {
+        valid: [
+          {
+            code: `function navigate(path: string) {
+  return path;
+}
+navigate("/nonexistent");`,
+            filename: appFile("home.tsx"),
+            settings,
+          },
+        ],
+        invalid: [],
+      });
+    }).not.toThrow();
+  });
+
+  it("reports a useNavigate alias with an unresolved path", async () => {
+    const settings = await fixtureSettings();
+    expect(() => {
+      ruleTester.run("no-unresolved-route-path", noUnresolvedRoutePath, {
+        valid: [],
+        invalid: [
+          {
+            code: `import { useNavigate } from "react-router";
+const go = useNavigate();
+go("/nope");`,
+            filename: appFile("home.tsx"),
+            settings,
+            errors: [{ messageId: "unresolvedRoutePath" }],
+          },
+        ],
+      });
+    }).not.toThrow();
+  });
+
   // -------------------------------------------------------------------------
   // redirect() — imported from react-router
   // -------------------------------------------------------------------------
@@ -345,6 +383,27 @@ export default function Nav() {
             errors: [{ messageId: "unresolvedRoutePath" }],
           },
         ],
+      });
+    }).not.toThrow();
+  });
+
+  it("does not report a local <Link> component that is not imported from React Router", async () => {
+    const settings = await fixtureSettings();
+    expect(() => {
+      ruleTester.run("no-unresolved-route-path", noUnresolvedRoutePath, {
+        valid: [
+          {
+            code: `function Link({ to }: { to: string }) {
+  return <span>{to}</span>;
+}
+export default function Nav() {
+  return <Link to="/nope">Nope</Link>;
+}`,
+            filename: appFile("home.tsx"),
+            settings,
+          },
+        ],
+        invalid: [],
       });
     }).not.toThrow();
   });

@@ -7,6 +7,7 @@ import { readSettings } from "../settings";
 import { getRuleDocsURL } from "../utils";
 
 type MessageIds = "unknownRouteParam";
+type BoundIdentifier = ESTree.Node & { type: "Identifier"; name: string };
 
 const validRouteParams = defineRule({
   meta: {
@@ -25,7 +26,7 @@ const validRouteParams = defineRule({
     // Memoize settings by reference — the settings object is the same across all files in a run.
     let settingsSource: Readonly<Settings> | undefined;
     let settings: ReactRouterToolkitSettings | null = null;
-    // Map from physicalFile → allowed param names (union across all route ids for that file).
+    // Map from physicalFile → param names available for every route id using that file.
     let allowedParamsByFile = new Map<string, Set<string>>();
 
     // Per-file state, reset in `before()`.
@@ -33,6 +34,7 @@ const validRouteParams = defineRule({
     let useParamsLocalName: string | null = null;
     // Bindings that hold the return value of useParams() — varName → node.
     let useParamsBindings = new Map<string, ESTree.Node>();
+    let shadowedBindingStack: Set<string>[] = [];
     // Allowed params for the current file.
     let allowedParams: Set<string> | null = null;
 
@@ -49,8 +51,10 @@ const validRouteParams = defineRule({
         if (existing === undefined) {
           allowedParamsByFile.set(entry.physicalFile, new Set(routeParams));
         } else {
-          for (const param of routeParams) {
-            existing.add(param);
+          for (const param of existing) {
+            if (!routeParams.has(param)) {
+              existing.delete(param);
+            }
           }
         }
       }
@@ -85,6 +89,7 @@ const validRouteParams = defineRule({
         // Reset per-file state.
         useParamsLocalName = null;
         useParamsBindings = new Map();
+        shadowedBindingStack = [];
         allowedParams = null;
 
         if (context.settings !== settingsSource) {
@@ -163,12 +168,37 @@ const validRouteParams = defineRule({
         }
       },
 
+      FunctionDeclaration: (node) => {
+        shadowedBindingStack.push(collectShadowedUseParamsBindings(node.params, useParamsBindings));
+      },
+
+      "FunctionDeclaration:exit": () => {
+        shadowedBindingStack.pop();
+      },
+
+      FunctionExpression: (node) => {
+        shadowedBindingStack.push(collectShadowedUseParamsBindings(node.params, useParamsBindings));
+      },
+
+      "FunctionExpression:exit": () => {
+        shadowedBindingStack.pop();
+      },
+
+      ArrowFunctionExpression: (node) => {
+        shadowedBindingStack.push(collectShadowedUseParamsBindings(node.params, useParamsBindings));
+      },
+
+      "ArrowFunctionExpression:exit": () => {
+        shadowedBindingStack.pop();
+      },
+
       MemberExpression: (node) => {
         if (allowedParams === null) return;
 
         const obj = node.object;
         if (obj.type !== "Identifier") return;
         if (!useParamsBindings.has(obj.name)) return;
+        if (shadowedBindingStack.some((scope) => scope.has(obj.name))) return;
 
         if (!node.computed) {
           // `params.shopId`
@@ -187,5 +217,50 @@ const validRouteParams = defineRule({
     };
   },
 });
+
+function collectShadowedUseParamsBindings(
+  params: readonly ESTree.Node[],
+  useParamsBindings: ReadonlyMap<string, ESTree.Node>,
+): Set<string> {
+  const names = new Set<string>();
+  for (const param of params) {
+    for (const identifier of collectBoundIdentifiers(param)) {
+      if (useParamsBindings.has(identifier.name)) {
+        names.add(identifier.name);
+      }
+    }
+  }
+  return names;
+}
+
+function collectBoundIdentifiers(node: ESTree.Node): BoundIdentifier[] {
+  switch (node.type) {
+    case "Identifier": {
+      return [node];
+    }
+    case "ObjectPattern": {
+      return node.properties.flatMap((property) => {
+        if (property.type === "RestElement") {
+          return collectBoundIdentifiers(property.argument);
+        }
+        return collectBoundIdentifiers(property.value);
+      });
+    }
+    case "ArrayPattern": {
+      return node.elements.flatMap((element) =>
+        element === null ? [] : collectBoundIdentifiers(element),
+      );
+    }
+    case "AssignmentPattern": {
+      return collectBoundIdentifiers(node.left);
+    }
+    case "RestElement": {
+      return collectBoundIdentifiers(node.argument);
+    }
+    default: {
+      return [];
+    }
+  }
+}
 
 export default validRouteParams;

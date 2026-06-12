@@ -54,7 +54,7 @@ Error message: `crossRouteImport`
 
 The error message includes the target route module path relative to the project root:
 
-```
+```text
 Importing route module "app/about.tsx" from another route couples the two routes. Move the shared
 code outside the routes directory (or into a shared module) instead.
 ```

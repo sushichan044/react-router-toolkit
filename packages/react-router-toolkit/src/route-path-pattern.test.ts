@@ -163,16 +163,21 @@ describe("matchesRoutePattern", () => {
   });
 
   describe("trailing dynamic expression", () => {
-    it("matches when a trailing expression may be empty or a query string (e.g. `/shops/shop_1/products${qs}`)", () => {
-      // `${qs}` can evaluate to "" or "?a=1" at runtime, so the template also denotes the
-      // pathname without it.
-      const template = parsePathTemplate(["/shops/shop_1/products", ""], 1);
+    it("matches when a trailing expression starts at a query boundary", () => {
+      // `?${qs}` can evaluate to an empty query suffix, so the template also denotes the pathname
+      // without it.
+      const template = parsePathTemplate(["/shops/shop_1/products?", ""], 1);
       expect(matchesRoutePattern(tree, template, "/")).toBe(true);
     });
 
     it("does not extend the same leniency to a non-trailing expression", () => {
       // `${x}` here is followed by a literal, so it is a real path segment.
       const template = parsePathTemplate(["/shops/", "/nope"], 1);
+      expect(matchesRoutePattern(tree, template, "/")).toBe(false);
+    });
+
+    it("does not omit a trailing expression glued to the last segment", () => {
+      const template = parsePathTemplate(["/shops/shop_1/products", ""], 1);
       expect(matchesRoutePattern(tree, template, "/")).toBe(false);
     });
   });

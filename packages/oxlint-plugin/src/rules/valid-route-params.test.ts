@@ -6,6 +6,7 @@ import { RuleTester } from "oxlint/plugins-dev";
 import { describe, expect, it } from "vite-plus/test";
 
 import { makeTempDir } from "../../test/utils";
+import { SETTINGS_KEY } from "../settings";
 import { reactRouterToolkitSettings } from "../setup";
 import validRouteParams from "./valid-route-params";
 
@@ -36,6 +37,45 @@ async function fixtureSettings(): Promise<Settings> {
     cacheDir: cacheDir.path,
   });
   return settings as unknown as Settings;
+}
+
+async function fixtureSettingsWithSharedRouteModule(): Promise<Settings> {
+  const settings = (await fixtureSettings()) as Record<string, unknown>;
+  const toolkit = settings[SETTINGS_KEY] as {
+    resolvedSettings: { routes: Record<string, unknown> };
+    routeModules: Record<string, { physicalFile: string; file: string; id: string }>;
+  };
+  toolkit.resolvedSettings.routes = {
+    root: { id: "root", path: "", file: "root.tsx" },
+    "routes/team": {
+      id: "routes/team",
+      parentId: "root",
+      path: "teams/:teamId",
+      file: "shared.tsx",
+    },
+    "routes/org": {
+      id: "routes/org",
+      parentId: "root",
+      path: "orgs/:orgId",
+      file: "shared.tsx",
+    },
+  };
+  const template = Object.values(toolkit.routeModules)[0]!;
+  toolkit.routeModules = {
+    "routes/team": {
+      ...template,
+      id: "routes/team",
+      file: "shared.tsx",
+      physicalFile: appFile("shared.tsx"),
+    },
+    "routes/org": {
+      ...template,
+      id: "routes/org",
+      file: "shared.tsx",
+      physicalFile: appFile("shared.tsx"),
+    },
+  };
+  return settings as Settings;
 }
 
 // ---------------------------------------------------------------------------
@@ -189,6 +229,26 @@ const id = params["nope"];`,
             errors: [{ messageId: "unknownRouteParam" }],
           },
         ],
+      });
+    }).not.toThrow();
+  });
+
+  it("does not treat a shadowed params binding as the useParams result", async () => {
+    const settings = await fixtureSettings();
+    expect(() => {
+      ruleTester.run("valid-route-params", validRouteParams, {
+        valid: [
+          {
+            code: `import { useParams } from "react-router";
+const params = useParams();
+function nested(params: { nope: string }) {
+  return params.nope;
+}`,
+            filename: appFile("shop-detail.tsx"),
+            settings,
+          },
+        ],
+        invalid: [],
       });
     }).not.toThrow();
   });
@@ -375,6 +435,27 @@ const { shop_id } = useParams<{ shopId: string }>();`,
           },
         ],
         invalid: [],
+      });
+    }).not.toThrow();
+  });
+});
+
+describe("valid-route-params — shared route modules", () => {
+  it("allows only params shared by every route id using the same module", async () => {
+    const settings = await fixtureSettingsWithSharedRouteModule();
+    expect(() => {
+      ruleTester.run("valid-route-params", validRouteParams, {
+        valid: [],
+        invalid: [
+          {
+            code: `import { useParams } from "react-router";
+const params = useParams();
+const teamId = params.teamId;`,
+            filename: appFile("shared.tsx"),
+            settings,
+            errors: [{ messageId: "unknownRouteParam" }],
+          },
+        ],
       });
     }).not.toThrow();
   });

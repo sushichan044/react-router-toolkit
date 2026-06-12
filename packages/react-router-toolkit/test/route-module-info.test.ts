@@ -4,7 +4,7 @@ import { resolve } from "node:path";
 import { create } from "@platformatic/vfs";
 import { describe, expect, it } from "vite-plus/test";
 
-import { analyzeRouteModules } from "../src/route-module-info";
+import { analyzeRouteModules, RECOGNIZED_EXPORT_NAMES } from "../src/route-module-info";
 import type { RouteModuleInfo } from "../src/schemas";
 import { appDir } from "./fixture";
 
@@ -20,6 +20,19 @@ async function analyzeOne(file: string): Promise<RouteModuleInfo> {
 }
 
 describe("analyzeRouteModules export analysis", () => {
+  it("does not let exported recognized names mutate analyzer behavior", async () => {
+    (RECOGNIZED_EXPORT_NAMES as unknown as { add?: (name: string) => void }).add?.("loaer");
+    try {
+      const info = await analyzeOne("routes/unknown-export.tsx");
+
+      expect(info.exports.loader).toBeNull();
+      expect(info.unknownExports).toHaveLength(1);
+      expect(info.unknownExports[0]?.name).toBe("loaer");
+    } finally {
+      (RECOGNIZED_EXPORT_NAMES as unknown as { delete?: (name: string) => void }).delete?.("loaer");
+    }
+  });
+
   it("records an async function loader and a function default component", async () => {
     const info = await analyzeOne("routes/async-loader.tsx");
 

@@ -50,7 +50,7 @@ export default [
 
 Error: `missingRouteFile`
 
-```
+```text
 Route module "settings.tsx" does not exist (resolved: app/settings.tsx).
 ```
 
@@ -73,7 +73,7 @@ export default [index("home/route.tsx")] satisfies RouteConfig;
 
 Error: `orphanRouteFile`
 
-```
+```text
 Route file "orphan/route.tsx" exists but is not registered in this route config.
 Register it or move it out of the app directory.
 ```

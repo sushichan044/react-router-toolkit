@@ -93,7 +93,10 @@ const noCrossRouteImports = defineRule({
       } else {
         // Try alias resolution.
         for (const { alias, targets } of settings.importAliases) {
-          if (!specifier.startsWith(alias)) {
+          const matchesAlias = alias.endsWith("/")
+            ? specifier.startsWith(alias)
+            : specifier === alias || specifier.startsWith(`${alias}/`);
+          if (!matchesAlias) {
             continue;
           }
           const residue = specifier.slice(alias.length);
