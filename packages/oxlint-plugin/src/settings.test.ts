@@ -52,6 +52,7 @@ const VALID = {
       unknownExports: [],
     },
   },
+  publicAssets: ["/manual.pdf"],
 };
 
 describe("readSettings", () => {

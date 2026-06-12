@@ -1,6 +1,10 @@
 import { resolve as resolvePath } from "node:path";
 
-import { analyzeRouteModules, resolveReactRouterConfig } from "react-router-toolkit";
+import {
+  analyzeRouteModules,
+  listPublicAssets,
+  resolveReactRouterConfig,
+} from "react-router-toolkit";
 import * as v from "valibot";
 
 import type { ReactRouterToolkitSettings } from "./settings";
@@ -37,15 +41,22 @@ export async function reactRouterToolkitSettings(
 ): Promise<Record<typeof SETTINGS_KEY, ReactRouterToolkitSettings>> {
   const resolved = await resolveReactRouterConfig(options.root, { cacheDir: options.cacheDir });
   const jsonSafe: unknown = JSON.parse(JSON.stringify(resolved));
+  const absoluteRoot = resolvePath(options.root);
+  // Vite's default public directory is `<root>/public`. listPublicAssets returns an empty array
+  // when the directory is absent, so no special-casing is needed.
+  const publicAssets = await listPublicAssets(`${absoluteRoot}/public`);
   return {
     [SETTINGS_KEY]: v.parse(settingsSchema, {
       // Absolute so the rules can render route paths relative to it regardless of how `root` was
       // passed.
-      root: resolvePath(options.root),
+      root: absoluteRoot,
       resolvedSettings: jsonSafe,
       // Source-derived facts (file existence, outlet context, exports), gathered once here so lint
       // rules never touch the filesystem.
       routeModules: await analyzeRouteModules(resolved),
+      // Static assets in the public directory are served at their path verbatim; links to them
+      // are not React Router routes and must not be flagged.
+      publicAssets,
     }),
   };
 }

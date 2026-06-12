@@ -29,6 +29,12 @@ export const settingsSchema = v.object({
   root: v.string(),
   resolvedSettings: resolvedReactRouterConfigSchema,
   routeModules: v.record(v.string(), routeModuleInfoSchema),
+  /**
+   * Decoded URL paths of files in the project's public directory (e.g. `["/manual.pdf"]`). Each
+   * entry is a `/`-prefixed, `decodeURI`-decoded path relative to the public directory root. Rules
+   * use this to suppress false positives for static assets served directly by Vite.
+   */
+  publicAssets: v.array(v.string()),
 });
 
 export type { OutletInfo, RouteModuleInfo } from "react-router-toolkit";

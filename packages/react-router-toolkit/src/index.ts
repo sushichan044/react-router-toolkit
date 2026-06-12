@@ -20,6 +20,13 @@ export { flattenRouteTree } from "./route-tree";
 export type { RouteLayoutInfo, RouteLayoutMap } from "./route-tree";
 export { findMissingRouteFiles, matchRoute } from "./route-match";
 export type { RouteMatchResult } from "./route-match";
+export { listPublicAssets } from "./public-assets";
+export {
+  buildRouteTreeFromManifest,
+  matchesRoutePattern,
+  parsePathTemplate,
+} from "./route-path-pattern";
+export type { ParsedPathTemplate, PathTemplateToken } from "./route-path-pattern";
 // The typegen pipeline itself (computeTypegenTargets / writeTypegenFiles / createProjectFiles) is
 // internal to the `react-router-toolkit typegen` CLI; only the pieces lint rules need are public.
 export {
