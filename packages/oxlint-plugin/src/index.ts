@@ -1,6 +1,7 @@
 import { eslintCompatPlugin } from "@oxlint/plugins";
 
 import pkg from "../package.json" with { type: "json" };
+import noUnknownRouteExports from "./rules/no-unknown-route-exports";
 import noUnresolvedRoutePath from "./rules/no-unresolved-route-path";
 import typeSafeOutletContext from "./rules/type-safe-outlet-context";
 import validRouteFile from "./rules/valid-route-file";
@@ -15,6 +16,7 @@ const plugin = eslintCompatPlugin({
     "type-safe-outlet-context": typeSafeOutletContext,
     "valid-route-type-imports": validRouteTypeImports,
     "no-unresolved-route-path": noUnresolvedRoutePath,
+    "no-unknown-route-exports": noUnknownRouteExports,
   },
 });
 

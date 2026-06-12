@@ -113,7 +113,7 @@ async function analyzeModuleFile(
   return { fileExists: true, outlets, exports, unknownExports };
 }
 
-const RECOGNIZED_EXPORT_NAMES = new Set<keyof RouteModuleExports>([
+export const RECOGNIZED_EXPORT_NAMES = new Set<keyof RouteModuleExports>([
   "default",
   "ErrorBoundary",
   "HydrateFallback",

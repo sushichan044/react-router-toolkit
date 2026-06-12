@@ -2,7 +2,7 @@ export { loadReactRouterConfig } from "./loaders/config";
 export { loadRoutes } from "./loaders/routes";
 export { buildRouteManifest } from "./loaders/manifest";
 export { resolveReactRouterConfig } from "./resolve";
-export { analyzeRouteModules } from "./route-module-info";
+export { analyzeRouteModules, RECOGNIZED_EXPORT_NAMES } from "./route-module-info";
 export { resolvedReactRouterConfigSchema, routeModuleInfoSchema } from "./schemas";
 export type {
   ClientLoaderExportInfo,
