@@ -12,7 +12,27 @@ type MessageIds =
   | "wrongReactRouterTypeImport"
   | "missingReactRouterTypeImport"
   | "wrongToolkitTypeImport"
-  | "missingToolkitTypeImport";
+  | "missingToolkitTypeImport"
+  | "handwrittenRouteType";
+
+/**
+ * Maps generic react-router handwritten types to their typegen Route namespace equivalents. Key:
+ * the imported name from react-router / react-router-dom Value: the replacement member name in the
+ * Route namespace (i.e. Route.<value>)
+ */
+const HANDWRITTEN_ROUTE_TYPE_REPLACEMENTS = new Map<string, string>([
+  ["LoaderFunctionArgs", "LoaderArgs"],
+  ["ActionFunctionArgs", "ActionArgs"],
+  ["ClientLoaderFunctionArgs", "ClientLoaderArgs"],
+  ["ClientActionFunctionArgs", "ClientActionArgs"],
+  ["MetaFunction", "MetaFunction"],
+  ["MetaArgs", "MetaArgs"],
+  ["LinksFunction", "LinksFunction"],
+  ["HeadersFunction", "HeadersFunction"],
+  ["HeadersArgs", "HeadersArgs"],
+]);
+
+const REACT_ROUTER_SOURCES = new Set(["react-router", "react-router-dom"]);
 
 interface GeneratedTypeImportDescriptor {
   sourcePrefix: string;
@@ -59,6 +79,8 @@ const validRouteTypeImports = defineRule({
         "react-router-toolkit route types must be imported from this route module's generated `{{expected}}` module.",
       missingToolkitTypeImport:
         "Import react-router-toolkit route types from this route module's generated `{{expected}}` module.",
+      handwrittenRouteType:
+        'Import the typegen-provided "Route.{{replacement}}" from "./+types/{{basename}}" instead of the generic "{{name}}" — generic types lose route-specific params typing.',
     } satisfies Record<MessageIds, string>,
   },
   createOnce: (context) => {
@@ -77,6 +99,11 @@ const validRouteTypeImports = defineRule({
       descriptor: GeneratedTypeImportDescriptor;
       expected: string;
     }[] = [];
+    let handwrittenRouteTypeSpecifiers: {
+      node: ESTree.ImportSpecifier;
+      name: string;
+      replacement: string;
+    }[] = [];
 
     return {
       before: () => {
@@ -87,6 +114,7 @@ const validRouteTypeImports = defineRule({
         usedReactRouterRouteType = false;
         usedToolkitType = false;
         wrongImports = [];
+        handwrittenRouteTypeSpecifiers = [];
 
         if (context.settings !== settingsSource) {
           settingsSource = context.settings;
@@ -115,7 +143,8 @@ const validRouteTypeImports = defineRule({
           text.includes("+types/") ||
           text.includes("+toolkit-types/") ||
           text.includes("Route.") ||
-          text.includes(NEAREST_OUTLET_CONTEXT_TYPE)
+          text.includes(NEAREST_OUTLET_CONTEXT_TYPE) ||
+          text.includes("react-router")
         );
       },
 
@@ -141,6 +170,24 @@ const validRouteTypeImports = defineRule({
           if (source !== expected) {
             wrongImports.push({ node, descriptor, expected });
           }
+        }
+
+        if (!REACT_ROUTER_SOURCES.has(source)) {
+          return;
+        }
+        for (const specifier of node.specifiers) {
+          if (specifier.type !== "ImportSpecifier") {
+            continue;
+          }
+          if (specifier.imported.type !== "Identifier") {
+            continue;
+          }
+          const importedName = specifier.imported.name;
+          const replacement = HANDWRITTEN_ROUTE_TYPE_REPLACEMENTS.get(importedName);
+          if (replacement === undefined) {
+            continue;
+          }
+          handwrittenRouteTypeSpecifiers.push({ node: specifier, name: importedName, replacement });
         }
       },
 
@@ -187,6 +234,19 @@ const validRouteTypeImports = defineRule({
           });
         }
 
+        const physicalFile = selfEntries[0]!.physicalFile;
+        for (const { node, name, replacement } of handwrittenRouteTypeSpecifiers) {
+          context.report({
+            node,
+            messageId: "handwrittenRouteType",
+            data: {
+              name,
+              replacement,
+              basename: basename(physicalFile, extname(physicalFile)),
+            },
+          });
+        }
+
         reportMissingImports(context, {
           lastImport,
           knownNames,
@@ -195,7 +255,7 @@ const validRouteTypeImports = defineRule({
             [REACT_ROUTER_ROUTE_TYPE, usedReactRouterRouteType],
             [NEAREST_OUTLET_CONTEXT_TYPE, usedToolkitType],
           ]),
-          physicalFile: selfEntries[0]!.physicalFile,
+          physicalFile,
         });
       },
     };
