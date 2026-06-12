@@ -54,6 +54,7 @@ const VALID = {
   },
   publicAssets: ["/manual.pdf"],
   orphanRouteFiles: [],
+  importAliases: [],
 };
 
 describe("readSettings", () => {

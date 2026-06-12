@@ -41,6 +41,13 @@ export const settingsSchema = v.object({
    * touching the filesystem.
    */
   orphanRouteFiles: v.array(v.string()),
+  /**
+   * Import alias mappings derived from the project's tsconfig `compilerOptions.paths` at setup
+   * time. Each entry maps an alias prefix (e.g. `"~/"`) to one or more absolute directory paths
+   * (e.g. `["/project/app/"]`). Rules use this to resolve aliased imports to candidate absolute
+   * paths without touching the filesystem.
+   */
+  importAliases: v.array(v.object({ alias: v.string(), targets: v.array(v.string()) })),
 });
 
 export type { OutletInfo, RouteModuleInfo } from "react-router-toolkit";
