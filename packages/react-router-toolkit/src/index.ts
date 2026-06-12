@@ -29,6 +29,7 @@ export {
   parsePathTemplate,
 } from "./route-path-pattern";
 export type { ParsedPathTemplate, PathTemplateToken } from "./route-path-pattern";
+export { collectRouteParams } from "./route-params";
 // The typegen pipeline itself (computeTypegenTargets / writeTypegenFiles / createProjectFiles) is
 // internal to the `react-router-toolkit typegen` CLI; only the pieces lint rules need are public.
 export {
