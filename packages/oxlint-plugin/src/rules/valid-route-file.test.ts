@@ -99,4 +99,43 @@ describe("valid-route-file", () => {
       });
     }).not.toThrow();
   });
+
+  it("reports an orphan route file on the export default declaration", async () => {
+    const settings = await fixtureSettings("with-orphan");
+    expect(() => {
+      ruleTester.run("valid-route-file", validRouteFile, {
+        valid: [],
+        invalid: [
+          {
+            code: readFixture("with-orphan"),
+            filename: fixtureRoutesFile("with-orphan"),
+            settings,
+            errors: [
+              {
+                messageId: "orphanRouteFile",
+                line: 3,
+                column: 0,
+              },
+            ],
+          },
+        ],
+      });
+    }).not.toThrow();
+  });
+
+  it("does not report when there are no orphan route files", async () => {
+    const settings = await fixtureSettings("valid");
+    expect(() => {
+      ruleTester.run("valid-route-file", validRouteFile, {
+        valid: [
+          {
+            code: readFixture("valid"),
+            filename: fixtureRoutesFile("valid"),
+            settings,
+          },
+        ],
+        invalid: [],
+      });
+    }).not.toThrow();
+  });
 });

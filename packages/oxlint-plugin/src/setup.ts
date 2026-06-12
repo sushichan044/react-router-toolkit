@@ -2,6 +2,7 @@ import { resolve as resolvePath } from "node:path";
 
 import {
   analyzeRouteModules,
+  findOrphanRouteFiles,
   listPublicAssets,
   resolveReactRouterConfig,
 } from "react-router-toolkit";
@@ -57,6 +58,9 @@ export async function reactRouterToolkitSettings(
       // Static assets in the public directory are served at their path verbatim; links to them
       // are not React Router routes and must not be flagged.
       publicAssets,
+      // Route module files that exist on disk but are not registered in the route manifest.
+      // Computed once here so the lint rule never touches the filesystem.
+      orphanRouteFiles: await findOrphanRouteFiles(resolved.routes, resolved.appDirectory),
     }),
   };
 }

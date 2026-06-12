@@ -4,6 +4,7 @@ import process from "node:process";
 import { cli, define } from "gunshi";
 import { resolve } from "pathe";
 
+import { findOrphanRouteFiles } from "./orphan-routes";
 import { resolveReactRouterConfig } from "./resolve";
 import { analyzeRouteModules } from "./route-module-info";
 import { computeTypegenTargets } from "./typegen/compute";
@@ -73,6 +74,59 @@ const typegen = define({
   },
 });
 
+const checkOrphans = define({
+  name: "check-orphans",
+  description:
+    "Report route module files inside the app directory that are not registered in routes.ts. " +
+    "Exits with code 1 when orphan files are found.",
+  args: {
+    root: {
+      type: "string",
+      short: "r",
+      default: ".",
+      description: "Project root (the directory containing vite.config.*)",
+    },
+  },
+  run: async (ctx) => {
+    const root = resolve(ctx.values.root);
+    try {
+      let resolved: Awaited<ReturnType<typeof resolveReactRouterConfig>>;
+      try {
+        resolved = await resolveReactRouterConfig(root);
+      } catch (error) {
+        throw new Error(
+          `Failed to resolve React Router config at ${root}: ${error instanceof Error ? error.message : String(error)}`,
+        );
+      }
+
+      let orphans: string[];
+      try {
+        orphans = await findOrphanRouteFiles(resolved.routes, resolved.appDirectory);
+      } catch (error) {
+        throw new Error(
+          `Failed to scan for orphan route files under ${root}: ${error instanceof Error ? error.message : String(error)}`,
+        );
+      }
+
+      if (orphans.length === 0) {
+        console.log("No orphan route files found.");
+        return;
+      }
+
+      console.error("Orphan route files found (not registered in routes.ts):");
+      for (const file of orphans) {
+        console.error(`  ${file}`);
+      }
+      process.exitCode = 1;
+    } catch (error) {
+      console.error(
+        `check-orphans failed: ${error instanceof Error ? error.message : String(error)}`,
+      );
+      process.exitCode = 1;
+    }
+  },
+});
+
 const main = define({
   name: "react-router-toolkit",
   description: "Toolkit CLI for React Router framework-mode projects",
@@ -80,11 +134,12 @@ const main = define({
     console.log("Usage: react-router-toolkit <command>");
     console.log("");
     console.log("Commands:");
-    console.log("  typegen  Generate outlet-context type modules");
+    console.log("  typegen        Generate outlet-context type modules");
+    console.log("  check-orphans  Report unregistered route module files");
   },
 });
 
 await cli(process.argv.slice(2), main, {
   name: "react-router-toolkit",
-  subCommands: { typegen },
+  subCommands: { typegen, "check-orphans": checkOrphans },
 });

@@ -20,6 +20,8 @@ export { flattenRouteTree } from "./route-tree";
 export type { RouteLayoutInfo, RouteLayoutMap } from "./route-tree";
 export { findMissingRouteFiles, matchRoute } from "./route-match";
 export type { RouteMatchResult } from "./route-match";
+export { findOrphanRouteFiles } from "./orphan-routes";
+export type { FindOrphanRouteFilesOptions } from "./orphan-routes";
 export { listPublicAssets } from "./public-assets";
 export {
   buildRouteTreeFromManifest,

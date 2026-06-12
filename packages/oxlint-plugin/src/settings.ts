@@ -35,6 +35,12 @@ export const settingsSchema = v.object({
    * use this to suppress false positives for static assets served directly by Vite.
    */
   publicAssets: v.array(v.string()),
+  /**
+   * Route module files (appDirectory-relative) that exist on disk but are not registered in the
+   * route manifest. Computed once at setup time by `findOrphanRouteFiles`; rules read this without
+   * touching the filesystem.
+   */
+  orphanRouteFiles: v.array(v.string()),
 });
 
 export type { OutletInfo, RouteModuleInfo } from "react-router-toolkit";
