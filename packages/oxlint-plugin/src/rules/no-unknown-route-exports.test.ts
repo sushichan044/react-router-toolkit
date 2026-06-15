@@ -148,6 +148,20 @@ export default function Home() { return null; }
             settings,
             errors: [{ messageId: "unknownRouteExport" }],
           },
+          {
+            // Default value: the bound name lives in the AssignmentPattern's `left`.
+            code: `export const { loadre = 1 } = helpers;`,
+            filename: appFile("home.tsx"),
+            settings,
+            errors: [{ messageId: "unknownRouteExport" }],
+          },
+          {
+            // Rest element: the bound name lives in the RestElement's `argument`.
+            code: `export const [...rest] = values;`,
+            filename: appFile("home.tsx"),
+            settings,
+            errors: [{ messageId: "unknownRouteExport" }],
+          },
         ],
       });
     }).not.toThrow();

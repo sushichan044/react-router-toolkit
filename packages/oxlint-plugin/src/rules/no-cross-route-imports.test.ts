@@ -202,6 +202,24 @@ describe("no-cross-route-imports", () => {
     }).not.toThrow();
   });
 
+  it("reports export type from another route module when allowTypeImports is false", async () => {
+    const settings = await fixtureSettings();
+    expect(() => {
+      ruleTester.run("no-cross-route-imports", noCrossRouteImports, {
+        valid: [],
+        invalid: [
+          {
+            code: `export type { SomeType } from "./about.tsx";`,
+            filename: appFile("home.tsx"),
+            settings,
+            options: [{ allowTypeImports: false }],
+            errors: [{ messageId: "crossRouteImport" }],
+          },
+        ],
+      });
+    }).not.toThrow();
+  });
+
   // ---------------------------------------------------------------------------
   // Valid: import type allowed by default (allowTypeImports: true)
   // ---------------------------------------------------------------------------
