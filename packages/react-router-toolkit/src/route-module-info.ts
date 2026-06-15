@@ -131,11 +131,14 @@ const INTERNAL_RECOGNIZED_EXPORT_NAMES = new Set<keyof RouteModuleExports>([
 ]);
 
 export const RECOGNIZED_EXPORT_NAMES = new Proxy(INTERNAL_RECOGNIZED_EXPORT_NAMES, {
-  get(target, prop, receiver) {
+  get(target, prop) {
     if (prop === "add" || prop === "delete" || prop === "clear") {
       return undefined;
     }
-    const value = Reflect.get(target, prop, receiver) as unknown;
+    // Use `target` (not `receiver`) so Set accessors like `size` run with the real Set as `this`.
+    // Forwarding the proxy as receiver makes `RECOGNIZED_EXPORT_NAMES.size` throw a TypeError
+    // ("Method get Set.prototype.size called on incompatible receiver").
+    const value = Reflect.get(target, prop, target) as unknown;
     return typeof value === "function" ? value.bind(target) : value;
   },
 }) as ReadonlySet<keyof RouteModuleExports>;

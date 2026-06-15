@@ -33,6 +33,15 @@ describe("analyzeRouteModules export analysis", () => {
     }
   });
 
+  it("exposes Set accessors and read methods through the read-only proxy", () => {
+    // The proxy must forward `size` (and other Set accessors) to the underlying Set; forwarding the
+    // proxy itself as the receiver throws "Method get Set.prototype.size called on incompatible
+    // receiver".
+    expect(RECOGNIZED_EXPORT_NAMES.size).toBeGreaterThan(0);
+    expect(RECOGNIZED_EXPORT_NAMES.has("loader")).toBe(true);
+    expect([...RECOGNIZED_EXPORT_NAMES]).toContain("loader");
+  });
+
   it("records an async function loader and a function default component", async () => {
     const info = await analyzeOne("routes/async-loader.tsx");
 
