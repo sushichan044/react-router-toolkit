@@ -227,4 +227,155 @@ export function helper(_args: Route.LoaderArgs) {}
       });
     }).not.toThrow();
   });
+
+  it("reports handwrittenRouteType for LoaderFunctionArgs imported from react-router in a route module", async () => {
+    const settings = await fixtureSettings();
+    expect(() => {
+      ruleTester.run("valid-route-type-imports", validRouteTypeImports, {
+        valid: [],
+        invalid: [
+          {
+            code: `import type { LoaderFunctionArgs } from 'react-router';
+
+export const loader = async ({ request }: LoaderFunctionArgs) => {
+  return null;
+};
+`,
+            filename: appFile("child.tsx"),
+            settings,
+            errors: [{ messageId: "handwrittenRouteType" }],
+          },
+        ],
+      });
+    }).not.toThrow();
+  });
+
+  it("reports handwrittenRouteType for namespace imports from react-router", async () => {
+    const settings = await fixtureSettings();
+    expect(() => {
+      ruleTester.run("valid-route-type-imports", validRouteTypeImports, {
+        valid: [],
+        invalid: [
+          {
+            code: `import type * as RR from 'react-router';
+
+export const loader = async ({ request }: RR.LoaderFunctionArgs) => {
+  return null;
+};
+`,
+            filename: appFile("child.tsx"),
+            settings,
+            errors: [{ messageId: "handwrittenRouteType" }],
+          },
+        ],
+      });
+    }).not.toThrow();
+  });
+
+  it("reports handwrittenRouteType for react-router-dom imports", async () => {
+    const settings = await fixtureSettings();
+    expect(() => {
+      ruleTester.run("valid-route-type-imports", validRouteTypeImports, {
+        valid: [],
+        invalid: [
+          {
+            code: `import type { LoaderFunctionArgs } from 'react-router-dom';
+
+export const loader = async ({ request }: LoaderFunctionArgs) => {
+  return null;
+};
+`,
+            filename: appFile("child.tsx"),
+            settings,
+            errors: [{ messageId: "handwrittenRouteType" }],
+          },
+        ],
+      });
+    }).not.toThrow();
+  });
+
+  it("reports handwrittenRouteType for ActionFunctionArgs and MetaFunction in a route module", async () => {
+    const settings = await fixtureSettings();
+    expect(() => {
+      ruleTester.run("valid-route-type-imports", validRouteTypeImports, {
+        valid: [],
+        invalid: [
+          {
+            code: `import type { ActionFunctionArgs, MetaFunction } from 'react-router';
+
+export const action = async ({ request }: ActionFunctionArgs) => {
+  return null;
+};
+
+export const meta: MetaFunction = () => [];
+`,
+            filename: appFile("child.tsx"),
+            settings,
+            errors: [{ messageId: "handwrittenRouteType" }, { messageId: "handwrittenRouteType" }],
+          },
+        ],
+      });
+    }).not.toThrow();
+  });
+
+  it("does not report for non-type imports like redirect from react-router in a route module", async () => {
+    const settings = await fixtureSettings();
+    expect(() => {
+      ruleTester.run("valid-route-type-imports", validRouteTypeImports, {
+        valid: [
+          {
+            code: `import { redirect } from 'react-router';
+
+export const loader = async () => {
+  return redirect('/');
+};
+`,
+            filename: appFile("child.tsx"),
+            settings,
+          },
+        ],
+        invalid: [],
+      });
+    }).not.toThrow();
+  });
+
+  it("does not report for types not in the replacement map (e.g. ShouldRevalidateFunction)", async () => {
+    const settings = await fixtureSettings();
+    expect(() => {
+      ruleTester.run("valid-route-type-imports", validRouteTypeImports, {
+        valid: [
+          {
+            code: `import type { ShouldRevalidateFunction } from 'react-router';
+
+export const shouldRevalidate: ShouldRevalidateFunction = () => false;
+`,
+            filename: appFile("child.tsx"),
+            settings,
+          },
+        ],
+        invalid: [],
+      });
+    }).not.toThrow();
+  });
+
+  it("does not report LoaderFunctionArgs imported in a non-route module file", async () => {
+    const settings = await fixtureSettings();
+    expect(() => {
+      ruleTester.run("valid-route-type-imports", validRouteTypeImports, {
+        valid: [
+          {
+            code: `import type { LoaderFunctionArgs } from 'react-router';
+
+export function createLoader(fn: (args: LoaderFunctionArgs) => unknown) {
+  return fn;
+}
+`,
+            filename: appFile("not-a-route.tsx"),
+            settings,
+          },
+        ],
+        invalid: [],
+      });
+    }).not.toThrow();
+  });
 });

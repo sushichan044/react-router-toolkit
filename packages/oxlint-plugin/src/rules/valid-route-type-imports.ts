@@ -12,7 +12,27 @@ type MessageIds =
   | "wrongReactRouterTypeImport"
   | "missingReactRouterTypeImport"
   | "wrongToolkitTypeImport"
-  | "missingToolkitTypeImport";
+  | "missingToolkitTypeImport"
+  | "handwrittenRouteType";
+
+/**
+ * Maps generic react-router handwritten types to their typegen Route namespace equivalents. Key:
+ * the imported name from react-router / react-router-dom Value: the replacement member name in the
+ * Route namespace (i.e. Route.<value>)
+ */
+const HANDWRITTEN_ROUTE_TYPE_REPLACEMENTS = new Map<string, string>([
+  ["LoaderFunctionArgs", "LoaderArgs"],
+  ["ActionFunctionArgs", "ActionArgs"],
+  ["ClientLoaderFunctionArgs", "ClientLoaderArgs"],
+  ["ClientActionFunctionArgs", "ClientActionArgs"],
+  ["MetaFunction", "MetaFunction"],
+  ["MetaArgs", "MetaArgs"],
+  ["LinksFunction", "LinksFunction"],
+  ["HeadersFunction", "HeadersFunction"],
+  ["HeadersArgs", "HeadersArgs"],
+]);
+
+const REACT_ROUTER_SOURCES = new Set(["react-router", "react-router-dom"]);
 
 interface GeneratedTypeImportDescriptor {
   sourcePrefix: string;
@@ -59,6 +79,8 @@ const validRouteTypeImports = defineRule({
         "react-router-toolkit route types must be imported from this route module's generated `{{expected}}` module.",
       missingToolkitTypeImport:
         "Import react-router-toolkit route types from this route module's generated `{{expected}}` module.",
+      handwrittenRouteType:
+        'Import the typegen-provided "Route.{{replacement}}" from "./+types/{{basename}}" instead of the generic "{{name}}" — generic types lose route-specific params typing.',
     } satisfies Record<MessageIds, string>,
   },
   createOnce: (context) => {
@@ -77,6 +99,12 @@ const validRouteTypeImports = defineRule({
       descriptor: GeneratedTypeImportDescriptor;
       expected: string;
     }[] = [];
+    let handwrittenRouteTypeSpecifiers: {
+      node: ESTree.Node;
+      name: string;
+      replacement: string;
+    }[] = [];
+    let reactRouterNamespaceImports = new Set<string>();
 
     return {
       before: () => {
@@ -87,6 +115,8 @@ const validRouteTypeImports = defineRule({
         usedReactRouterRouteType = false;
         usedToolkitType = false;
         wrongImports = [];
+        handwrittenRouteTypeSpecifiers = [];
+        reactRouterNamespaceImports = new Set();
 
         if (context.settings !== settingsSource) {
           settingsSource = context.settings;
@@ -115,7 +145,8 @@ const validRouteTypeImports = defineRule({
           text.includes("+types/") ||
           text.includes("+toolkit-types/") ||
           text.includes("Route.") ||
-          text.includes(NEAREST_OUTLET_CONTEXT_TYPE)
+          text.includes(NEAREST_OUTLET_CONTEXT_TYPE) ||
+          text.includes("react-router")
         );
       },
 
@@ -141,6 +172,28 @@ const validRouteTypeImports = defineRule({
           if (source !== expected) {
             wrongImports.push({ node, descriptor, expected });
           }
+        }
+
+        if (!REACT_ROUTER_SOURCES.has(source)) {
+          return;
+        }
+        for (const specifier of node.specifiers) {
+          if (specifier.type === "ImportNamespaceSpecifier") {
+            reactRouterNamespaceImports.add(specifier.local.name);
+            continue;
+          }
+          if (specifier.type !== "ImportSpecifier") {
+            continue;
+          }
+          if (specifier.imported.type !== "Identifier") {
+            continue;
+          }
+          const importedName = specifier.imported.name;
+          const replacement = HANDWRITTEN_ROUTE_TYPE_REPLACEMENTS.get(importedName);
+          if (replacement === undefined) {
+            continue;
+          }
+          handwrittenRouteTypeSpecifiers.push({ node: specifier, name: importedName, replacement });
         }
       },
 
@@ -171,6 +224,18 @@ const validRouteTypeImports = defineRule({
           if (node.typeName.name === NEAREST_OUTLET_CONTEXT_TYPE) {
             usedToolkitType = true;
           }
+        } else {
+          const handwritten = getReactRouterNamespaceHandwrittenType(
+            node.typeName,
+            reactRouterNamespaceImports,
+          );
+          if (handwritten !== null) {
+            handwrittenRouteTypeSpecifiers.push({
+              node: node.typeName,
+              name: handwritten.name,
+              replacement: handwritten.replacement,
+            });
+          }
         }
       },
 
@@ -187,6 +252,19 @@ const validRouteTypeImports = defineRule({
           });
         }
 
+        const physicalFile = selfEntries[0]!.physicalFile;
+        for (const { node, name, replacement } of handwrittenRouteTypeSpecifiers) {
+          context.report({
+            node,
+            messageId: "handwrittenRouteType",
+            data: {
+              name,
+              replacement,
+              basename: basename(physicalFile, extname(physicalFile)),
+            },
+          });
+        }
+
         reportMissingImports(context, {
           lastImport,
           knownNames,
@@ -195,7 +273,7 @@ const validRouteTypeImports = defineRule({
             [REACT_ROUTER_ROUTE_TYPE, usedReactRouterRouteType],
             [NEAREST_OUTLET_CONTEXT_TYPE, usedToolkitType],
           ]),
-          physicalFile: selfEntries[0]!.physicalFile,
+          physicalFile,
         });
       },
     };
@@ -266,6 +344,23 @@ function isRouteNamespaceType(typeName: ESTree.TSTypeReference["typeName"]): boo
     left = left.left;
   }
   return left.type === "Identifier" && left.name === REACT_ROUTER_ROUTE_TYPE;
+}
+
+function getReactRouterNamespaceHandwrittenType(
+  typeName: ESTree.TSTypeReference["typeName"],
+  namespaces: ReadonlySet<string>,
+): { name: string; replacement: string } | null {
+  if (typeName.type !== "TSQualifiedName") {
+    return null;
+  }
+  if (typeName.left.type !== "Identifier" || !namespaces.has(typeName.left.name)) {
+    return null;
+  }
+  if (typeName.right.type !== "Identifier") {
+    return null;
+  }
+  const replacement = HANDWRITTEN_ROUTE_TYPE_REPLACEMENTS.get(typeName.right.name);
+  return replacement === undefined ? null : { name: typeName.right.name, replacement };
 }
 
 function reactRouterTypesSpecifier(physicalFile: string): string {

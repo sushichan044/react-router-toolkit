@@ -2,7 +2,7 @@ export { loadReactRouterConfig } from "./loaders/config";
 export { loadRoutes } from "./loaders/routes";
 export { buildRouteManifest } from "./loaders/manifest";
 export { resolveReactRouterConfig } from "./resolve";
-export { analyzeRouteModules } from "./route-module-info";
+export { analyzeRouteModules, RECOGNIZED_EXPORT_NAMES } from "./route-module-info";
 export { resolvedReactRouterConfigSchema, routeModuleInfoSchema } from "./schemas";
 export type {
   ClientLoaderExportInfo,
@@ -20,6 +20,16 @@ export { flattenRouteTree } from "./route-tree";
 export type { RouteLayoutInfo, RouteLayoutMap } from "./route-tree";
 export { findMissingRouteFiles, matchRoute } from "./route-match";
 export type { RouteMatchResult } from "./route-match";
+export { findOrphanRouteFiles } from "./orphan-routes";
+export type { FindOrphanRouteFilesOptions } from "./orphan-routes";
+export { listPublicAssets } from "./public-assets";
+export {
+  buildRouteTreeFromManifest,
+  matchesRoutePattern,
+  parsePathTemplate,
+} from "./route-path-pattern";
+export type { ParsedPathTemplate, PathTemplateToken } from "./route-path-pattern";
+export { collectRouteParams } from "./route-params";
 // The typegen pipeline itself (computeTypegenTargets / writeTypegenFiles / createProjectFiles) is
 // internal to the `react-router-toolkit typegen` CLI; only the pieces lint rules need are public.
 export {

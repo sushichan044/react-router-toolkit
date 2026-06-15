@@ -8,7 +8,7 @@ import type { ReactRouterToolkitSettings } from "../settings";
 import { readSettings } from "../settings";
 import { getRuleDocsURL } from "../utils";
 
-type MessageIds = "missingDefaultExport" | "missingRouteFile";
+type MessageIds = "missingDefaultExport" | "missingRouteFile" | "orphanRouteFile";
 
 const validRouteFile = defineRule({
   meta: {
@@ -22,6 +22,8 @@ const validRouteFile = defineRule({
       missingDefaultExport:
         "Routing config file must default-export its route config (e.g. `export default [...] satisfies RouteConfig`).",
       missingRouteFile: 'Route module "{{file}}" does not exist (resolved: {{resolved}}).',
+      orphanRouteFile:
+        'Route file "{{file}}" exists but is not registered in this route config. Register it or move it out of the app directory.',
     } satisfies Record<MessageIds, string>,
   },
   createOnce: (context) => {
@@ -105,6 +107,15 @@ const validRouteFile = defineRule({
             loc: reportLoc,
             messageId: "missingRouteFile",
             data: { file: entry.file, resolved: relativePath(root, entry.physicalFile) },
+          });
+        }
+
+        // Orphan route files were computed at setup time (`findOrphanRouteFiles`); report each one.
+        for (const file of settings.orphanRouteFiles) {
+          context.report({
+            loc: reportLoc,
+            messageId: "orphanRouteFile",
+            data: { file },
           });
         }
       },

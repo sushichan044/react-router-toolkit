@@ -29,6 +29,25 @@ export const settingsSchema = v.object({
   root: v.string(),
   resolvedSettings: resolvedReactRouterConfigSchema,
   routeModules: v.record(v.string(), routeModuleInfoSchema),
+  /**
+   * Decoded URL paths of files in the project's public directory (e.g. `["/manual.pdf"]`). Each
+   * entry is a `/`-prefixed, `decodeURI`-decoded path relative to the public directory root. Rules
+   * use this to suppress false positives for static assets served directly by Vite.
+   */
+  publicAssets: v.array(v.string()),
+  /**
+   * Route module files (appDirectory-relative) that exist on disk but are not registered in the
+   * route manifest. Computed once at setup time by `findOrphanRouteFiles`; rules read this without
+   * touching the filesystem.
+   */
+  orphanRouteFiles: v.array(v.string()),
+  /**
+   * Import alias mappings derived from the project's tsconfig `compilerOptions.paths` at setup
+   * time. Each entry maps an alias prefix (e.g. `"~/"`) to one or more absolute directory paths
+   * (e.g. `["/project/app/"]`). Rules use this to resolve aliased imports to candidate absolute
+   * paths without touching the filesystem.
+   */
+  importAliases: v.array(v.object({ alias: v.string(), targets: v.array(v.string()) })),
 });
 
 export type { OutletInfo, RouteModuleInfo } from "react-router-toolkit";

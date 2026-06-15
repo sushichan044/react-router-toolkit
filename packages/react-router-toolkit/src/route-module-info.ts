@@ -113,7 +113,7 @@ async function analyzeModuleFile(
   return { fileExists: true, outlets, exports, unknownExports };
 }
 
-const RECOGNIZED_EXPORT_NAMES = new Set<keyof RouteModuleExports>([
+const INTERNAL_RECOGNIZED_EXPORT_NAMES = new Set<keyof RouteModuleExports>([
   "default",
   "ErrorBoundary",
   "HydrateFallback",
@@ -129,6 +129,19 @@ const RECOGNIZED_EXPORT_NAMES = new Set<keyof RouteModuleExports>([
   "handle",
   "shouldRevalidate",
 ]);
+
+export const RECOGNIZED_EXPORT_NAMES = new Proxy(INTERNAL_RECOGNIZED_EXPORT_NAMES, {
+  get(target, prop) {
+    if (prop === "add" || prop === "delete" || prop === "clear") {
+      return undefined;
+    }
+    // Use `target` (not `receiver`) so Set accessors like `size` run with the real Set as `this`.
+    // Forwarding the proxy as receiver makes `RECOGNIZED_EXPORT_NAMES.size` throw a TypeError
+    // ("Method get Set.prototype.size called on incompatible receiver").
+    const value = Reflect.get(target, prop, target) as unknown;
+    return typeof value === "function" ? value.bind(target) : value;
+  },
+}) as ReadonlySet<keyof RouteModuleExports>;
 
 function emptyExports(): RouteModuleExports {
   return {
@@ -177,7 +190,7 @@ function collectModule(program: Program): CollectedModule {
   let defaultDeclaration: ExportDefaultDeclaration["declaration"] | null = null;
 
   const record = (name: string, info: RouteExportInfo) => {
-    if (RECOGNIZED_EXPORT_NAMES.has(name as keyof RouteModuleExports)) {
+    if (INTERNAL_RECOGNIZED_EXPORT_NAMES.has(name as keyof RouteModuleExports)) {
       recognized.set(name as keyof RouteModuleExports, info);
     } else {
       unknownExports.push({ name, ...info });
