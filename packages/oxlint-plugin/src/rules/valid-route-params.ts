@@ -67,6 +67,19 @@ const validRouteParams = defineRule({
       return [...params].sort().join(", ");
     }
 
+    // Record any bound name that shadows a useParams() binding into the innermost open scope, so
+    // member access on the inner binding is skipped. Used for catch params and block-scoped
+    // re-declarations like `catch (params)` / `{ const params = other }`.
+    function shadowBindingsInCurrentScope(pattern: ESTree.Node): void {
+      const scope = shadowedBindingStack.at(-1);
+      if (scope === undefined) return;
+      for (const identifier of collectBoundIdentifiers(pattern)) {
+        if (useParamsBindings.has(identifier.name)) {
+          scope.add(identifier.name);
+        }
+      }
+    }
+
     function reportUnknown(node: ESTree.Node, name: string): void {
       if (allowedParams === null) {
         return;
@@ -138,10 +151,18 @@ const validRouteParams = defineRule({
 
         // Match `something = useParams()` or `something = useParams<...>()`
         const init = node.init;
-        if (!init || init.type !== "CallExpression") return;
+        const isUseParamsCall =
+          init != null &&
+          init.type === "CallExpression" &&
+          init.callee.type === "Identifier" &&
+          init.callee.name === useParamsLocalName;
 
-        const callee = init.callee;
-        if (callee.type !== "Identifier" || callee.name !== useParamsLocalName) return;
+        if (!isUseParamsCall) {
+          // A `const params = <not useParams()>` re-binds the name within its block scope, so member
+          // access on it must not be checked against route params. Record it as a shadow.
+          shadowBindingsInCurrentScope(node.id);
+          return;
+        }
 
         const id = node.id;
 
@@ -189,6 +210,33 @@ const validRouteParams = defineRule({
       },
 
       "ArrowFunctionExpression:exit": () => {
+        shadowedBindingStack.pop();
+      },
+
+      // A block opens a new lexical scope where `const params = ...` can shadow the useParams
+      // binding (filled lazily by VariableDeclarator as declarations are visited).
+      BlockStatement: () => {
+        shadowedBindingStack.push(new Set());
+      },
+
+      "BlockStatement:exit": () => {
+        shadowedBindingStack.pop();
+      },
+
+      // `catch (params)` binds the name to the caught error, not the useParams result.
+      CatchClause: (node) => {
+        const shadowed = new Set<string>();
+        if (node.param !== null) {
+          for (const identifier of collectBoundIdentifiers(node.param)) {
+            if (useParamsBindings.has(identifier.name)) {
+              shadowed.add(identifier.name);
+            }
+          }
+        }
+        shadowedBindingStack.push(shadowed);
+      },
+
+      "CatchClause:exit": () => {
         shadowedBindingStack.pop();
       },
 

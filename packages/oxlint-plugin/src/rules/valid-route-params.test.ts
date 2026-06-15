@@ -252,6 +252,70 @@ function nested(params: { nope: string }) {
       });
     }).not.toThrow();
   });
+
+  it("does not treat a block-scoped params re-declaration as the useParams result", async () => {
+    const settings = await fixtureSettings();
+    expect(() => {
+      ruleTester.run("valid-route-params", validRouteParams, {
+        valid: [
+          {
+            code: `import { useParams } from "react-router";
+const params = useParams();
+{
+  const params = { nope: "x" };
+  console.log(params.nope);
+}`,
+            filename: appFile("shop-detail.tsx"),
+            settings,
+          },
+        ],
+        invalid: [],
+      });
+    }).not.toThrow();
+  });
+
+  it("does not treat a catch-bound params as the useParams result", async () => {
+    const settings = await fixtureSettings();
+    expect(() => {
+      ruleTester.run("valid-route-params", validRouteParams, {
+        valid: [
+          {
+            code: `import { useParams } from "react-router";
+const params = useParams();
+try {
+  doSomething();
+} catch (params) {
+  console.log(params.nope);
+}`,
+            filename: appFile("shop-detail.tsx"),
+            settings,
+          },
+        ],
+        invalid: [],
+      });
+    }).not.toThrow();
+  });
+
+  it("still reports useParams member access from inside a nested block", async () => {
+    const settings = await fixtureSettings();
+    expect(() => {
+      ruleTester.run("valid-route-params", validRouteParams, {
+        valid: [],
+        invalid: [
+          {
+            code: `import { useParams } from "react-router";
+const params = useParams();
+{
+  console.log(params.nope);
+}`,
+            filename: appFile("shop-detail.tsx"),
+            settings,
+            errors: [{ messageId: "unknownRouteParam" }],
+          },
+        ],
+      });
+    }).not.toThrow();
+  });
 });
 
 // ---------------------------------------------------------------------------
