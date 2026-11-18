@@ -7,8 +7,8 @@ React Router and `react-router-toolkit` both generate per-route type modules key
 module's file basename:
 
 ```tsx
-import type { Route } from "./+types/child";
 import type { NearestOutletContext } from "./+toolkit-types/child";
+import type { Route } from "./+types/child";
 ```
 
 This rule has two responsibilities:
@@ -26,9 +26,9 @@ facts gathered during plugin setup and never reads the filesystem while linting.
 ## Valid
 
 ```tsx
+import type { NearestOutletContext } from "./+toolkit-types/child";
 // child.tsx
 import type { Route } from "./+types/child";
-import type { NearestOutletContext } from "./+toolkit-types/child";
 
 export function loader({ params }: Route.LoaderArgs) {
   return params;
@@ -54,7 +54,6 @@ ignored:
 ```tsx
 // ✅ not reported — redirect is a runtime value, not a generic type
 import { redirect } from "react-router";
-
 // ✅ not reported — ShouldRevalidateFunction is not in the replacement map
 import type { ShouldRevalidateFunction } from "react-router";
 ```
@@ -62,16 +61,16 @@ import type { ShouldRevalidateFunction } from "react-router";
 ## Invalid: wrong generated type import
 
 ```tsx
+import type { NearestOutletContext } from "./+toolkit-types/other";
 // ❌ child.tsx importing from a sibling route's module
 import type { Route } from "./+types/other";
-import type { NearestOutletContext } from "./+toolkit-types/other";
 ```
 
 With `--fix`:
 
 ```tsx
-import type { Route } from "./+types/child";
 import type { NearestOutletContext } from "./+toolkit-types/child";
+import type { Route } from "./+types/child";
 ```
 
 This also applies when the import points at a non-generated module path:
@@ -85,8 +84,8 @@ import type { NearestOutletContext } from "../shared/toolkit-types";
 With `--fix`:
 
 ```tsx
-import type { Route } from "./+types/child";
 import type { NearestOutletContext } from "./+toolkit-types/child";
+import type { Route } from "./+types/child";
 ```
 
 Error messageIds: `wrongReactRouterTypeImport`, `wrongToolkitTypeImport`
@@ -111,8 +110,8 @@ export default function Child() {
 With `--fix`:
 
 ```tsx
-import type { Route } from "./+types/child";
 import type { NearestOutletContext } from "./+toolkit-types/child";
+import type { Route } from "./+types/child";
 export function loader({ params }: Route.LoaderArgs) {
   return params;
 }

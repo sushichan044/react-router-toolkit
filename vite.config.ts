@@ -2,7 +2,7 @@ import { defineConfig } from "vite-plus";
 
 export default defineConfig({
   fmt: {
-    ignorePatterns: ["pnpm-lock.yaml", "CHANGELOG.md"],
+    ignorePatterns: ["pnpm-lock.yaml", "CHANGELOG.md", ".agents/**"],
     jsdoc: true,
     sortImports: true,
   },
