@@ -19,8 +19,8 @@ catalogs:
     react-router: 7.16.0
     typescript: 6.0.3
     unplugin-unused: 0.5.7
-    vite: 8.0.16
-    vite-plus: 0.1.24
+    vite: npm:@voidzero-dev/vite-plus-core@8.3.8000
+    vite-plus: 1.7.0
   prod:
     "@oxlint/plugins": 1.68.0
     "@platformatic/vfs": 0.4.0

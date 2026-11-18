@@ -6,7 +6,7 @@ export default defineConfig({
       attw: { level: "error", profile: "esm-only" },
       clean: true,
       dts: {
-        tsgo: true,
+        generator: "tsgo",
       },
       entry: ["src/index.ts", "src/setup.ts"],
       fixedExtension: true,

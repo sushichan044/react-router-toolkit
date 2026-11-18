@@ -14,29 +14,26 @@ at setup time. It never reads the filesystem during linting.
 ## Valid
 
 ```tsx
-// Importing from a shared module outside the routes directory
-import { sharedValue } from "./shared";
-
 // Importing a co-located component that is not a route module
 import { SharedComponent } from "./_components/shared-component";
-
 // Type-only import is allowed by default (see allowTypeImports)
 import type { SomeType } from "./about.tsx";
-
 // All specifiers are type-only — treated as a type import
 import { type SomeType, type AnotherType } from "./about.tsx";
+// Importing from a shared module outside the routes directory
+import { sharedValue } from "./shared";
 ```
 
 ## Invalid
 
 ```tsx
-// ❌ Relative import of another route module
-import { something } from "./about.tsx";
-import { something } from "./about"; // extension is optional
-
+import { something } from "~/about";
 // ❌ Alias import of another route module (tsconfig paths resolved)
 import { something } from "~/about.tsx";
-import { something } from "~/about";
+
+import { something } from "./about"; // extension is optional
+// ❌ Relative import of another route module
+import { something } from "./about.tsx";
 
 // ❌ Re-export from another route module
 export { something } from "./about.tsx";
@@ -44,7 +41,6 @@ export * from "./about.tsx";
 
 // ❌ Mixed import — has at least one value specifier
 import { type SomeType, someValue } from "./about.tsx";
-
 // ❌ Type import when allowTypeImports is false
 // options: [{ allowTypeImports: false }]
 import type { SomeType } from "./about.tsx";
